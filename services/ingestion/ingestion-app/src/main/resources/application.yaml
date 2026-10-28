@@ -37,6 +37,33 @@ gridpulse:
           max-retries: 4
           initial-delay: PT1S
           max-delay: PT30S
+    open-meteo: # ADR-0008
+      forecast-base-url: https://api.open-meteo.com/v1
+      archive-base-url: https://archive-api.open-meteo.com/v1
+      forecast-cron: "0 20 * * * *" # hourly; revisions are bucketed to 6 hours
+      reanalysis-cron: "0 40 6 * * *" # daily; the archive lags real time by about a day
+      poll-on-startup: true
+      forecast-days: 3 # covers 24-48 hours ahead from any time of day
+      revision-interval: PT6H
+      reanalysis-days: 10
+      locations:
+        - { id: london, latitude: 51.5074, longitude: -0.1278, region: london }
+        - { id: birmingham, latitude: 52.4862, longitude: -1.8904, region: west-midlands }
+        - { id: manchester, latitude: 53.4808, longitude: -2.2426, region: north-west-england }
+        - { id: leeds, latitude: 53.8008, longitude: -1.5491, region: yorkshire }
+        - { id: edinburgh, latitude: 55.9533, longitude: -3.1883, region: south-scotland }
+        - { id: cardiff, latitude: 51.4816, longitude: -3.1791, region: south-wales }
+        - { id: norwich, latitude: 52.6309, longitude: 1.2974, region: east-england }
+        - { id: aberdeen, latitude: 57.1497, longitude: -2.0943, region: north-scotland }
+      http:
+        connect-timeout: PT10S
+        read-timeout: PT30S
+        requests-per-second: 1 # published limit 600/min; each location counts as a call
+        burst: 1
+        retry:
+          max-retries: 4
+          initial-delay: PT1S
+          max-delay: PT30S
     elexon: # ADR-0007
       base-url: https://data.elexon.co.uk/bmrs/api/v1
       cron: "0 16,46 * * * *" # outturn is published within 15 minutes of a period ending
