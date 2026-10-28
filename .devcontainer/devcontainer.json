@@ -1,0 +1,46 @@
+// Reproducible dev environment for GitHub Codespaces and VS Code Dev Containers.
+// Gives every contributor the same toolchain (ADR-0003) plus a Docker engine for the Compose stack.
+{
+  "name": "GridPulse",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
+
+  "features": {
+    // Docker-in-Docker rather than docker-outside-of-docker: Compose bind mounts (./scripts, ../../schemas)
+    // resolve to paths inside this container, which only exist for an engine running in here too.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/java:1": { "version": "21", "jdkDistro": "tem" },
+    "ghcr.io/devcontainers/features/dotnet:2": { "version": "10.0" },
+    "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "forwardPorts": [8080, 18081, 19092, 5432],
+  "portsAttributes": {
+    "8080": { "label": "Redpanda Console" },
+    "18081": { "label": "Schema Registry", "onAutoForward": "silent" },
+    "19092": { "label": "Kafka API", "onAutoForward": "silent" },
+    "5432": { "label": "TimescaleDB", "onAutoForward": "silent" }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "ms-dotnettools.csdevkit",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-containers",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        "editorconfig.editorconfig"
+      ]
+    }
+  }
+}

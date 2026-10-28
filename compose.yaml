@@ -1,0 +1,8 @@
+# Entry point for local development:  docker compose up -d
+# Each concern lives in its own file under deploy/compose/ and is pulled in here,
+# so later phases add services (ingestion, forecasting, scheduler, observability)
+# without this file growing.
+name: gridpulse
+
+include:
+  - deploy/compose/infra.yaml

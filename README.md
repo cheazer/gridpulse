@@ -25,6 +25,37 @@ loadtest/k6/         Load tests for the scheduling API
 docs/adr/            Architecture decision records
 ```
 
+## Running locally
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/cheazer/gridpulse?quickstart=1)
+
+The quickest route is a Codespace: the dev container ([.devcontainer/](.devcontainer/devcontainer.json)) ships
+Java 21, .NET 10, Python 3.12, uv and Docker, and creates `.env` for you. Run `docker compose up -d` in its terminal.
+
+Locally, you need Docker Desktop (or Docker Engine with Compose v2.20+).
+
+```bash
+cp .env.example .env    # then set POSTGRES_PASSWORD
+docker compose up -d
+```
+
+| What | Where |
+|---|---|
+| Redpanda Console (topics, messages, schemas) | http://localhost:8080 |
+| Kafka API (from the host) | `localhost:19092` |
+| Schema Registry | http://localhost:18081 |
+| TimescaleDB | `localhost:5432` (credentials from `.env`) |
+
+On start-up two one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics, and
+`schema-init` registers the event schemas with `BACKWARD` compatibility. Both are idempotent.
+`docker compose down -v` stops everything and deletes the data volumes.
+
+To check the whole stack end to end (topics, schemas, a Kafka round trip, TimescaleDB):
+
+```bash
+bash deploy/compose/scripts/smoke-test.sh
+```
+
 ## Data sources
 
 | Source | Used for | Licence |
