@@ -19,13 +19,14 @@ public record GenerationMix(Unit unit, List<FuelReading> fuels) implements Paylo
   /**
    * @param fuel normalised category used across sources
    * @param sourceFuelCode the code exactly as the source reported it (e.g. CCGT, INTFR)
+   * @param value net value; negative only for imports (net export) and storage (pumping)
    */
   public record FuelReading(Fuel fuel, String sourceFuelCode, double value) {
     public FuelReading {
       Objects.requireNonNull(fuel, "fuel");
       Objects.requireNonNull(sourceFuelCode, "sourceFuelCode");
-      if (value < 0) {
-        throw new IllegalArgumentException("generation cannot be negative: " + value);
+      if (value < 0 && !fuel.isNetFlow()) {
+        throw new IllegalArgumentException(fuel.wireName() + " cannot be negative: " + value);
       }
     }
   }
@@ -46,6 +47,11 @@ public record GenerationMix(Unit unit, List<FuelReading> fuels) implements Paylo
     @JsonValue
     public String wireName() {
       return name().toLowerCase(Locale.ROOT);
+    }
+
+    /** Net flows go negative: interconnectors when GB exports, storage while pumping. */
+    public boolean isNetFlow() {
+      return this == IMPORTS || this == STORAGE;
     }
   }
 

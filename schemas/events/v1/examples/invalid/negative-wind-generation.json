@@ -1,0 +1,123 @@
+{
+  "expect_failure": "schema",
+  "reason": "only imports and storage may be negative (net export, pumping); negative wind generation is impossible",
+  "event": {
+    "event_id": "043d3864-d67e-5f00-882b-24f8bb74a0ee",
+    "schema_version": "1.1.0",
+    "event_type": "generation_mix",
+    "source": "elexon-insights",
+    "series": "fuelhh",
+    "region": "GB",
+    "valid_from": "2026-10-27T19:00:00Z",
+    "valid_to": "2026-10-27T19:30:00Z",
+    "settlement_date": "2026-10-27",
+    "settlement_period": 39,
+    "issued_at": null,
+    "ingested_at": "2026-10-28T21:10:01Z",
+    "payload": {
+      "unit": "MW",
+      "fuels": [
+        {
+          "fuel": "biomass",
+          "source_fuel_code": "BIOMASS",
+          "value": 3013
+        },
+        {
+          "fuel": "gas",
+          "source_fuel_code": "CCGT",
+          "value": 9491
+        },
+        {
+          "fuel": "coal",
+          "source_fuel_code": "COAL",
+          "value": 0
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTELEC",
+          "value": 308
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTEW",
+          "value": 0
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTFR",
+          "value": -516
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTGRNL",
+          "value": -514
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTIFA2",
+          "value": -214
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTIRL",
+          "value": -132
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTNED",
+          "value": -274
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTNEM",
+          "value": -416
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTNSL",
+          "value": 1400
+        },
+        {
+          "fuel": "imports",
+          "source_fuel_code": "INTVKL",
+          "value": 1426
+        },
+        {
+          "fuel": "hydro",
+          "source_fuel_code": "NPSHYD",
+          "value": 617
+        },
+        {
+          "fuel": "nuclear",
+          "source_fuel_code": "NUCLEAR",
+          "value": 5099
+        },
+        {
+          "fuel": "gas",
+          "source_fuel_code": "OCGT",
+          "value": 12
+        },
+        {
+          "fuel": "oil",
+          "source_fuel_code": "OIL",
+          "value": 0
+        },
+        {
+          "fuel": "other",
+          "source_fuel_code": "OTHER",
+          "value": 1070
+        },
+        {
+          "fuel": "storage",
+          "source_fuel_code": "PS",
+          "value": 434
+        },
+        {
+          "fuel": "wind",
+          "source_fuel_code": "WIND",
+          "value": -50
+        }
+      ]
+    }
+  }
+}

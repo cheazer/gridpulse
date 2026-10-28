@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gridpulse.example/schemas/events/v1/generation-mix.schema.json",
   "title": "Generation mix v1",
-  "description": "Generation by fuel for one half-hour. Elexon FUELHH reports MW by BM fuel type (transmission-connected only, so solar and most embedded wind are absent); the Carbon Intensity API reports percentages.",
+  "description": "Generation by fuel for one half-hour. Elexon FUELHH reports MW by BM fuel type (transmission-connected only, so solar and most embedded wind are absent); the Carbon Intensity API reports percentages. Since 1.1.0, imports and storage are net values: negative means net export or pumping.",
   "allOf": [{ "$ref": "envelope.schema.json" }],
   "properties": {
     "event_type": { "const": "generation_mix" },
@@ -19,6 +19,8 @@
             "type": "object",
             "additionalProperties": false,
             "required": ["fuel", "source_fuel_code", "value"],
+            "if": { "properties": { "fuel": { "not": { "enum": ["imports", "storage"] } } } },
+            "then": { "properties": { "value": { "minimum": 0 } } },
             "properties": {
               "fuel": {
                 "description": "Normalised fuel category used across sources.",
@@ -31,7 +33,10 @@
                 "minLength": 1,
                 "maxLength": 32
               },
-              "value": { "type": "number", "minimum": 0 }
+              "value": {
+                "description": "Net value. Only imports (interconnector export) and storage (pumping) may be negative.",
+                "type": "number"
+              }
             }
           }
         }

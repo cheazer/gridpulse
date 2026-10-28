@@ -33,8 +33,11 @@ public record GridEvent(
     Instant ingestedAt,
     Payload payload) {
 
-  /** The schema version producers in this build write. */
-  public static final String SCHEMA_VERSION = "1.0.0";
+  /**
+   * The schema version producers in this build write. 1.1.0: generation mix imports and storage may
+   * be negative (BACKWARD-compatible: every 1.0.0 event is still valid).
+   */
+  public static final String SCHEMA_VERSION = "1.1.0";
 
   public GridEvent {
     Objects.requireNonNull(eventId, "eventId");
