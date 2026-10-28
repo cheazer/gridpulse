@@ -33,5 +33,14 @@ public record CarbonIntensity(
     public String wireName() {
       return wireName;
     }
+
+    public static IntensityIndex fromWireName(String wireName) {
+      for (IntensityIndex index : values()) {
+        if (index.wireName.equals(wireName)) {
+          return index;
+        }
+      }
+      throw new IllegalArgumentException("unknown intensity index: " + wireName);
+    }
   }
 }
