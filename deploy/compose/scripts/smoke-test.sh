@@ -22,6 +22,8 @@ echo "--- topics"
 topics=$(docker compose exec -T redpanda rpk topic list | awk 'NR>1 {print $1}' | grep '^gridpulse\.' | sort)
 count=$(grep -c . <<<"$topics")
 [[ $count -eq 12 ]] && pass "12 gridpulse topics (6 event + 6 dlq)" || fail "expected 12 topics, found $count: $topics"
+autocreate=$(docker compose exec -T redpanda rpk cluster config get auto_create_topics_enabled)
+[[ $autocreate == false ]] && pass "topic auto-creation disabled" || fail "auto_create_topics_enabled=$autocreate"
 partitions=$(docker compose exec -T redpanda rpk topic describe gridpulse.demand.v1 -p | awk 'NR>1' | grep -c .)
 [[ $partitions -eq 6 ]] && pass "gridpulse.demand.v1 has 6 partitions" || fail "gridpulse.demand.v1 has $partitions partitions"
 
