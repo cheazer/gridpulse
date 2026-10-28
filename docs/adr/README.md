@@ -11,3 +11,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0002](0002-redpanda-and-json-schema.md) | Redpanda locally, JSON Schema contracts with a schema registry | Accepted |
 | [0003](0003-runtime-versions.md) | Runtime versions: Java 21, .NET 10, Python 3.12 | Accepted |
 | [0004](0004-event-identity-and-time.md) | Deterministic event IDs, UTC timestamps, settlement periods | Accepted |
+| [0005](0005-timescaledb-storage-layout.md) | TimescaleDB storage layout: one typed hypertable per event type | Accepted |
