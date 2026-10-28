@@ -1,0 +1,50 @@
+# --- Secrets & local config ---
+.env
+*.env
+!.env.example
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# --- Java / Gradle ---
+.gradle/
+build/
+!**/src/**/build/
+out/
+*.class
+hs_err_pid*
+
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+TestResults/
+.vs/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- ML artefacts (tracked in MLflow, not git) ---
+mlruns/
+mlartifacts/
+data/raw/
+data/cache/
+*.parquet
+
+# --- Node (k6 tooling, if any) ---
+node_modules/
