@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import dev.gridpulse.ingestion.http.SourceUnavailableException;
+import dev.gridpulse.ingestion.testing.FixtureServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.HttpClientErrorException;
@@ -13,7 +14,7 @@ import org.springframework.web.client.RestClient;
 
 class CarbonIntensityClientTest {
 
-  private final FixtureServer api = FixtureServer.start();
+  private final FixtureServer api = Fixtures.server();
   private final CarbonIntensityClient client =
       new CarbonIntensityClient(RestClient.builder(), Fixtures.properties(api.baseUrl()));
 

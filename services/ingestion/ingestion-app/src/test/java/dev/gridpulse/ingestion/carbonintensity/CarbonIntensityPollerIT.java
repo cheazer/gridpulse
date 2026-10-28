@@ -10,6 +10,7 @@ import dev.gridpulse.events.EventValidator;
 import dev.gridpulse.events.GridEvent;
 import dev.gridpulse.ingestion.publish.EventPublisher;
 import dev.gridpulse.ingestion.publish.EventPublisher.PublishResult;
+import dev.gridpulse.ingestion.testing.FixtureServer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneOffset;
@@ -42,8 +43,11 @@ import org.testcontainers.redpanda.RedpandaContainer;
  */
 @SpringBootTest(
     properties = {
+      // No start-up or scheduled polls during the test; it calls poll() itself.
       "gridpulse.sources.carbon-intensity.poll-on-startup=false",
-      "gridpulse.sources.carbon-intensity.cron=-" // no scheduled polls during the test
+      "gridpulse.sources.carbon-intensity.cron=-",
+      "gridpulse.sources.elexon.poll-on-startup=false",
+      "gridpulse.sources.elexon.cron=-"
     })
 @Testcontainers
 class CarbonIntensityPollerIT {
@@ -52,7 +56,7 @@ class CarbonIntensityPollerIT {
   static final RedpandaContainer REDPANDA =
       new RedpandaContainer("docker.redpanda.com/redpandadata/redpanda:v26.2.4");
 
-  static final FixtureServer API = FixtureServer.start();
+  static final FixtureServer API = Fixtures.server();
 
   @DynamicPropertySource
   static void sourceUrl(DynamicPropertyRegistry registry) {

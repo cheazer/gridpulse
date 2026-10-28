@@ -17,20 +17,37 @@ spring:
       compression-type: zstd
       properties:
         enable.idempotence: true # no duplicates from producer retries
-        linger.ms: 20 # batch the ~900 events of one poll into few requests
+        linger.ms: 20 # batch the ~1,700 events of one poll into few requests
 
 gridpulse:
   sources:
-    carbon-intensity:
+    carbon-intensity: # ADR-0006
       base-url: https://api.carbonintensity.org.uk
       cron: "0 2/30 * * * *"
       poll-on-startup: true
       lookback: PT2H
       national-revision-interval: PT30M
       regional-revision-interval: PT3H
-      connect-timeout: PT10S
-      read-timeout: PT30S
-      retry:
-        max-retries: 4
-        initial-delay: PT1S
-        max-delay: PT30S
+      http:
+        connect-timeout: PT10S
+        read-timeout: PT30S
+        requests-per-second: 2 # no published limit; be polite
+        burst: 2
+        retry:
+          max-retries: 4
+          initial-delay: PT1S
+          max-delay: PT30S
+    elexon: # ADR-0007
+      base-url: https://data.elexon.co.uk/bmrs/api/v1
+      cron: "0 16,46 * * * *" # outturn is published within 15 minutes of a period ending
+      poll-on-startup: true
+      lookback-days: 1 # re-fetch the previous settlement day too
+      http:
+        connect-timeout: PT10S
+        read-timeout: PT30S
+        requests-per-second: 5 # no published limit; be polite
+        burst: 5
+        retry:
+          max-retries: 4
+          initial-delay: PT1S
+          max-delay: PT30S

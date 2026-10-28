@@ -13,3 +13,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0004](0004-event-identity-and-time.md) | Deterministic event IDs, UTC timestamps, settlement periods | Accepted |
 | [0005](0005-timescaledb-storage-layout.md) | TimescaleDB storage layout: one typed hypertable per event type | Accepted |
 | [0006](0006-polling-and-forecast-revisions.md) | Polling cadence, forecast revisions and delivery guarantees | Accepted |
+| [0007](0007-elexon-demand-definitions-and-rate-limits.md) | Elexon data, demand definitions for benchmarking, and per-source rate limits | Accepted |

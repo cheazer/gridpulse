@@ -34,7 +34,15 @@ Each topic has a dead-letter sibling `<topic>.dlq` for records that fail validat
   implementation against the golden examples.
 - **Settlement period** is derived from `valid_from` in `Europe/London`: 1–48 normally, 1–46 or 1–50 on clock-change
   days. `demand-indo-clock-change-sp50.json` is the case to remember.
-- **Evolving a schema:** adding an optional payload field is a minor bump (`1.x.0`); anything else needs `v2/`.
+- **Evolving a schema:** a change that every existing event still satisfies (adding an optional field,
+  relaxing a constraint) is a minor bump (`1.x.0`); anything else needs `v2/`.
+
+## Changelog
+
+| Version | Change |
+|---|---|
+| 1.1.0 | Generation mix values are net: `imports` (interconnector export) and `storage` (pumping) may be negative. Found in live Elexon FUELHH data. Other fuels stay non-negative. |
+| 1.0.0 | Initial contract. |
 
 ## Validating
 

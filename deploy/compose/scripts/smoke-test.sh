@@ -29,22 +29,42 @@ partitions=$(docker compose exec -T redpanda rpk topic describe gridpulse.demand
 
 echo "--- schema registry"
 subjects=$(curl -fsS localhost:18081/subjects)
-for s in gridpulse.envelope.v1 gridpulse.carbon-intensity.v1-value gridpulse.demand-forecast.v1-value gridpulse.weather.v1-value; do
-  grep -q "\"$s\"" <<<"$subjects" && pass "subject $s" || fail "subject $s missing"
-done
+count=$(grep -o '"gridpulse\.[a-z-]*\.v1-value"' <<<"$subjects" | wc -l)
+[[ $count -eq 6 ]] && pass "6 event schema subjects" || fail "expected 6 subjects, got $count: $subjects"
 compat=$(curl -fsS localhost:18081/config/gridpulse.demand.v1-value)
 grep -q BACKWARD <<<"$compat" && pass "BACKWARD compatibility on gridpulse.demand.v1-value" || fail "compatibility: $compat"
-refs=$(curl -fsS localhost:18081/subjects/gridpulse.demand-forecast.v1-value/versions/latest)
-grep -q 'demand.schema.json' <<<"$refs" && grep -q 'envelope.schema.json' <<<"$refs" \
-  && pass "demand-forecast schema references envelope + demand" || fail "demand-forecast references: $refs"
+# Registered schemas are bundled (ADR-0002): no $ref may point outside the document.
+external=$(curl -fsS localhost:18081/subjects/gridpulse.demand-forecast.v1-value/versions/latest | python3 -c '
+import json, sys
+refs = []
+def walk(node):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            refs.append(v) if k == "$ref" else walk(v)
+    elif isinstance(node, list):
+        for v in node: walk(v)
+schema = json.loads(json.load(sys.stdin)["schema"])
+walk(schema)
+# Redpanda stores internal refs resolved against the schema own $id; those are still internal.
+own = schema.get("$id", "") + "#"
+print(" ".join(r for r in refs if not (r.startswith("#") or r.startswith(own))))')
+[[ -z $external ]] && pass "registered demand-forecast schema is self-contained" \
+  || fail "demand-forecast schema has external \$refs: $external"
 
 echo "--- kafka round trip"
+# Uses the dead-letter topic, which nothing consumes, so the golden event can't leak into a live
+# database; reads back the exact partition and offset written, as the topic may hold other records.
+topic=gridpulse.carbon-intensity.v1.dlq
 example=schemas/events/v1/examples/valid/carbon-intensity-national-actual.json
 event_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["event_id"])' "$example")
-python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$example" \
-  | docker compose exec -T redpanda rpk topic produce gridpulse.carbon-intensity.v1 -k GB >/dev/null
-received=$(docker compose exec -T redpanda rpk topic consume gridpulse.carbon-intensity.v1 -o start -n 1 -f '%k %v\n')
-grep -q "^GB .*$event_id" <<<"$received" && pass "golden event produced and consumed with key GB" || fail "round trip: $received"
+produced=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$example" \
+  | docker compose exec -T redpanda rpk topic produce "$topic" -k GB)
+partition=$(sed -nE 's/.*partition ([0-9]+) at offset ([0-9]+).*/\1/p' <<<"$produced")
+offset=$(sed -nE 's/.*partition ([0-9]+) at offset ([0-9]+).*/\2/p' <<<"$produced")
+received=$(docker compose exec -T redpanda rpk topic consume "$topic" \
+  -p "$partition" -o "$offset" -n 1 -f '%k %v\n')
+grep -q "^GB .*$event_id" <<<"$received" && pass "golden event produced and consumed with key GB" \
+  || fail "round trip ($produced): $received"
 
 echo "--- timescaledb"
 version=$(docker compose exec -T timescaledb psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \

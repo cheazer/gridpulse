@@ -4,13 +4,13 @@ import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.NationalPeriod
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.NationalResponse;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.RegionalPeriod;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.RegionalResponse;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
+import dev.gridpulse.ingestion.testing.FixtureServer;
+import dev.gridpulse.ingestion.testing.TestHttpSettings;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -20,29 +20,35 @@ final class Fixtures {
   /** When the fixtures were recorded; tests use it as the poll time. */
   static final Instant POLLED_AT = Instant.parse("2026-10-28T20:16:42Z");
 
+  private static final String API_TIME = "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}Z";
+
   private static final JsonMapper JSON =
       JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
 
   private Fixtures() {}
 
-  static byte[] bytes(String name) {
-    try (InputStream in =
-        Fixtures.class.getResourceAsStream("/fixtures/carbon-intensity/" + name)) {
-      if (in == null) {
-        throw new IllegalArgumentException("no fixture " + name);
-      }
-      return in.readAllBytes();
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+  /** Serves the recorded responses only for correctly formatted paths, like the real API. */
+  static FixtureServer server() {
+    return FixtureServer.start(
+        "",
+        Map.of(
+            "/intensity/" + API_TIME + "/fw48h", "/fixtures/carbon-intensity/national.json",
+            "/regional/intensity/" + API_TIME + "/fw48h",
+                "/fixtures/carbon-intensity/regional.json"));
   }
 
   static List<NationalPeriod> national() {
-    return JSON.readValue(bytes("national.json"), NationalResponse.class).data();
+    return JSON.readValue(
+            FixtureServer.resource("/fixtures/carbon-intensity/national.json"),
+            NationalResponse.class)
+        .data();
   }
 
   static List<RegionalPeriod> regional() {
-    return JSON.readValue(bytes("regional.json"), RegionalResponse.class).data();
+    return JSON.readValue(
+            FixtureServer.resource("/fixtures/carbon-intensity/regional.json"),
+            RegionalResponse.class)
+        .data();
   }
 
   static CarbonIntensityProperties properties(URI baseUrl) {
@@ -52,8 +58,6 @@ final class Fixtures {
         Duration.ofHours(2),
         Duration.ofMinutes(30),
         Duration.ofHours(3),
-        Duration.ofSeconds(2),
-        Duration.ofSeconds(5),
-        new CarbonIntensityProperties.Retry(3, Duration.ofMillis(10), Duration.ofMillis(50)));
+        TestHttpSettings.fast());
   }
 }

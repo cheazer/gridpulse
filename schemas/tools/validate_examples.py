@@ -23,6 +23,7 @@ Run from the repo root:  uv run schemas/tools/validate_examples.py
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import uuid
@@ -103,26 +104,42 @@ def semantic_errors(event: dict) -> dict[str, str]:
     return errors
 
 
-def build_validators() -> dict[str, Draft7Validator]:
-    schemas = [json.loads(p.read_text(encoding="utf-8")) for p in SCHEMA_DIR.glob("*.schema.json")]
-    registry = Registry().with_resources((s["$id"], Resource.from_contents(s)) for s in schemas)
-    by_file = {Path(s["$id"]).name: s for s in schemas}
+def load_bundler():
+    """register_schemas.bundle, loaded by path (that script must stay importable on its own)."""
+    spec = importlib.util.spec_from_file_location("register_schemas", Path(__file__).with_name("register_schemas.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.bundle
+
+
+def build_validators() -> dict[str, tuple[Draft7Validator, Draft7Validator]]:
+    """Per event type: (source schema with $refs, bundled schema as registered). Both must agree."""
+    by_file = {p.name: json.loads(p.read_text(encoding="utf-8")) for p in SCHEMA_DIR.glob("*.schema.json")}
+    registry = Registry().with_resources((s["$id"], Resource.from_contents(s)) for s in by_file.values())
+    bundle = load_bundler()
 
     validators = {}
     for event_type, file_name in SCHEMA_FILE_BY_EVENT_TYPE.items():
-        schema = by_file[file_name]
+        schema, bundled = by_file[file_name], bundle(file_name, by_file)
         Draft7Validator.check_schema(schema)
-        validators[event_type] = Draft7Validator(
-            schema, registry=registry, format_checker=Draft7Validator.FORMAT_CHECKER
+        Draft7Validator.check_schema(bundled)
+        validators[event_type] = (
+            Draft7Validator(schema, registry=registry, format_checker=Draft7Validator.FORMAT_CHECKER),
+            # No registry: a bundled schema must resolve every $ref within itself.
+            Draft7Validator(bundled, format_checker=Draft7Validator.FORMAT_CHECKER),
         )
     return validators
 
 
-def schema_errors(event: dict, validators: dict[str, Draft7Validator]) -> list[str]:
-    validator = validators.get(event.get("event_type"))
-    if validator is None:
+def schema_errors(event: dict, validators: dict[str, tuple[Draft7Validator, Draft7Validator]]) -> list[str]:
+    pair = validators.get(event.get("event_type"))
+    if pair is None:
         return [f"unknown event_type {event.get('event_type')!r}"]
-    return [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}" for e in validator.iter_errors(event)]
+    source, bundled = pair
+    errors = [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}" for e in source.iter_errors(event)]
+    if bool(errors) != any(True for _ in bundled.iter_errors(event)):
+        errors.append("the bundled (registered) schema disagrees with the source schema")
+    return errors
 
 
 def check_valid(path: Path, validators: dict[str, Draft7Validator]) -> list[str]:

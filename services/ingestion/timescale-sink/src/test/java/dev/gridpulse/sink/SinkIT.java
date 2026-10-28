@@ -67,7 +67,7 @@ class SinkIT {
   private static final Map<String, Integer> GOLDEN_ROWS =
       Map.of(
           "carbon_intensity", 2,
-          "generation_mix", 10,
+          "generation_mix", 10 + 20, // two examples: 10 fuel codes, and all 20 incl. net exports
           "demand", 1,
           "demand_forecast", 1,
           "system_price", 1,
