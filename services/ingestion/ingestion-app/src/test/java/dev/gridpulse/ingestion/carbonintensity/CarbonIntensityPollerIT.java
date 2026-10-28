@@ -31,6 +31,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
@@ -41,14 +42,8 @@ import org.testcontainers.redpanda.RedpandaContainer;
  * The whole ingestion app against a real Redpanda broker and the recorded API responses: one poll
  * must put every event, schema-valid and keyed by region, on the carbon intensity topic.
  */
-@SpringBootTest(
-    properties = {
-      // No start-up or scheduled polls during the test; it calls poll() itself.
-      "gridpulse.sources.carbon-intensity.poll-on-startup=false",
-      "gridpulse.sources.carbon-intensity.cron=-",
-      "gridpulse.sources.elexon.poll-on-startup=false",
-      "gridpulse.sources.elexon.cron=-"
-    })
+@SpringBootTest
+@ActiveProfiles("it") // no start-up or scheduled polls; tests call poll() themselves
 @Testcontainers
 class CarbonIntensityPollerIT {
 
