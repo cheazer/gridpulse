@@ -13,3 +13,5 @@ dependencyResolutionManagement {
 rootProject.name = "gridpulse-ingestion"
 
 include("events-common")
+include("ingestion-app")
+include("timescale-sink")

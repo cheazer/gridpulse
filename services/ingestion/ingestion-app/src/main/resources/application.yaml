@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: ingestion-app
+  main:
+    # Virtual threads are daemon threads, and this app has no web server or consumer to hold the
+    # JVM open: without keep-alive it exits as soon as start-up finishes.
+    keep-alive: true
+  threads:
+    virtual:
+      enabled: true # pollers spend their time waiting on HTTP and Kafka
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      compression-type: zstd
+      properties:
+        enable.idempotence: true # no duplicates from producer retries
+        linger.ms: 20 # batch the ~900 events of one poll into few requests
+
+gridpulse:
+  sources:
+    carbon-intensity:
+      base-url: https://api.carbonintensity.org.uk
+      cron: "0 2/30 * * * *"
+      poll-on-startup: true
+      lookback: PT2H
+      national-revision-interval: PT30M
+      regional-revision-interval: PT3H
+      connect-timeout: PT10S
+      read-timeout: PT30S
+      retry:
+        max-retries: 4
+        initial-delay: PT1S
+        max-delay: PT30S
