@@ -47,7 +47,9 @@ consumers are written in different languages, so the event contract must be lang
   this is irrelevant; it would be revisited if throughput became a constraint.
 - Breaking changes (renaming or removing a field, changing a type) require a new major version: new schema
   folder `v2/` and new topics `*.v2`, with a period of dual-publishing.
-- The per-type schemas `$ref` the shared envelope definitions. These are registered as schema-registry
-  references (envelope first, then dependants); verified against Redpanda v26.2 by
-  `deploy/compose/scripts/smoke-test.sh`. Had that not worked, the fallback was to bundle each schema into one
-  self-contained document at build time.
+- The per-type schemas `$ref` the shared envelope definitions. **Update (step 1.7):** these were first registered
+  as schema-registry references, which Redpanda v26.2 stores correctly. The first real schema evolution (1.1.0)
+  showed its compatibility checker can't resolve those references ("schema pointer not found"). So the
+  fallback is now in use: `register_schemas.py` bundles each schema into one self-contained document, inlining
+  shared definitions, before registering it. The source files keep their `$ref`s, and the Python validator
+  checks that the source and bundled forms agree on every golden example.

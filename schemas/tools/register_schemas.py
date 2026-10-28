@@ -1,11 +1,15 @@
 """Register the v1 event schemas with the Kafka schema registry.
 
-Subjects follow the TopicNameStrategy: '<topic>-value', where the topic is derived
-from the schema file name (carbon-intensity.schema.json -> gridpulse.carbon-intensity.v1).
-Shared schemas that are only referenced (the envelope) get a 'gridpulse.<name>.v1' subject.
+Subjects follow the TopicNameStrategy: '<topic>-value', where the topic is derived from the
+schema file name (carbon-intensity.schema.json -> gridpulse.carbon-intensity.v1).
 
-Cross-file $refs become registry references, so dependencies are registered first.
-Re-running is safe: registering an identical schema returns the existing version.
+Each schema is *bundled* before registering: every cross-file $ref (to the envelope, or to
+another type's definitions) is inlined under "definitions", giving one self-contained document per
+subject. Redpanda's registry stores schemas with references, but its compatibility checker can't
+resolve them (ADR-0002), and self-contained schemas are simpler for any consumer anyway.
+
+Re-running is safe: registering an identical schema returns the existing version, and a changed
+one is accepted only if it is BACKWARD-compatible with the latest version.
 
 Standard library only, so it runs in a bare python image:
     SCHEMA_REGISTRY_URL=http://localhost:18081 python schemas/tools/register_schemas.py
@@ -13,6 +17,7 @@ Standard library only, so it runs in a bare python image:
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import sys
@@ -23,46 +28,61 @@ from pathlib import Path
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "events" / "v1"
 REGISTRY_URL = os.environ.get("SCHEMA_REGISTRY_URL", "http://localhost:18081").rstrip("/")
 COMPATIBILITY = "BACKWARD"  # ADR-0002
-REFERENCE_ONLY = {"envelope.schema.json"}
+SHARED_ONLY = {"envelope.schema.json"}  # inlined into others, not a topic of its own
+
+
+def load_schemas() -> dict[str, dict]:
+    return {p.name: json.loads(p.read_text(encoding="utf-8")) for p in SCHEMA_DIR.glob("*.schema.json")}
+
+
+def bundle(name: str, schemas: dict[str, dict]) -> dict:
+    """Return schema `name` with every external $ref inlined under "definitions".
+
+    "envelope.schema.json"                    -> "#/definitions/envelope"
+    "demand.schema.json#/definitions/x"       -> "#/definitions/demand/definitions/x"
+    and, inside an inlined document, "#/y"    -> "#/definitions/<its key>/y"
+    """
+
+    def key(file_name: str) -> str:
+        return file_name.removesuffix(".schema.json")
+
+    needed: list[str] = []
+
+    def fix(ref: str, prefix: str) -> str:
+        if ref.startswith("#"):
+            return ref if prefix == "#" else prefix + ref[1:]
+        file_name, _, fragment = ref.partition("#")
+        if file_name not in needed:
+            needed.append(file_name)
+        return f"#/definitions/{key(file_name)}{fragment}"
+
+    def rewrite(node: object, prefix: str) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "$ref" and isinstance(v, str):
+                    node[k] = fix(v, prefix)
+                else:
+                    rewrite(v, prefix)
+        elif isinstance(node, list):
+            for item in node:
+                rewrite(item, prefix)
+
+    root = copy.deepcopy(schemas[name])
+    rewrite(root, "#")
+    definitions = root.setdefault("definitions", {})
+    i = 0
+    while i < len(needed):  # inlined documents may themselves reference other files
+        dependency = copy.deepcopy(schemas[needed[i]])
+        dependency.pop("$id", None)  # an embedded $id would change how its refs resolve
+        dependency.pop("$schema", None)
+        rewrite(dependency, f"#/definitions/{key(needed[i])}")
+        definitions[key(needed[i])] = dependency
+        i += 1
+    return root
 
 
 def subject_for(file_name: str) -> str:
-    stem = file_name.removesuffix(".schema.json")
-    if file_name in REFERENCE_ONLY:
-        return f"gridpulse.{stem}.v1"
-    return f"gridpulse.{stem}.v1-value"
-
-
-def external_refs(node: object) -> set[str]:
-    """File names of every non-local $ref in a schema (e.g. 'envelope.schema.json')."""
-    found: set[str] = set()
-    if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str) and not ref.startswith("#"):
-            found.add(ref.split("#", 1)[0])
-        for value in node.values():
-            found |= external_refs(value)
-    elif isinstance(node, list):
-        for value in node:
-            found |= external_refs(value)
-    return found
-
-
-def registration_order(deps: dict[str, set[str]]) -> list[str]:
-    ordered: list[str] = []
-
-    def visit(name: str, path: tuple[str, ...]) -> None:
-        if name in ordered:
-            return
-        if name in path:
-            raise ValueError(f"circular schema reference: {' -> '.join(path + (name,))}")
-        for dep in sorted(deps[name]):
-            visit(dep, path + (name,))
-        ordered.append(name)
-
-    for name in sorted(deps):
-        visit(name, ())
-    return ordered
+    return f"gridpulse.{file_name.removesuffix('.schema.json')}.v1-value"
 
 
 def call(method: str, path: str, body: dict | None = None) -> dict:
@@ -80,28 +100,19 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
 
 
 def main() -> int:
-    texts = {p.name: p.read_text(encoding="utf-8") for p in SCHEMA_DIR.glob("*.schema.json")}
-    deps = {name: external_refs(json.loads(text)) for name, text in texts.items()}
-    versions: dict[str, int] = {}
-
-    for name in registration_order(deps):
+    schemas = load_schemas()
+    for name in sorted(n for n in schemas if n not in SHARED_ONLY):
         subject = subject_for(name)
-        references = [
-            {"name": dep, "subject": subject_for(dep), "version": versions[dep]} for dep in sorted(deps[name])
-        ]
         call("PUT", f"/config/{subject}", {"compatibility": COMPATIBILITY})
         result = call(
             "POST",
             f"/subjects/{subject}/versions",
-            {"schemaType": "JSON", "schema": texts[name], "references": references},
+            {"schemaType": "JSON", "schema": json.dumps(bundle(name, schemas))},
         )
         latest = call("GET", f"/subjects/{subject}/versions/latest")
         if latest["id"] != result["id"]:
             raise RuntimeError(f"{subject}: registered id {result['id']} is not the latest ({latest['id']})")
-        versions[name] = latest["version"]
-        refs = f"  refs: {', '.join(r['name'] for r in references)}" if references else ""
-        print(f"{subject:45} v{latest['version']} (id {result['id']}){refs}")
-
+        print(f"{subject:45} v{latest['version']} (id {result['id']})")
     return 0
 
 
