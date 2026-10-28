@@ -49,6 +49,17 @@ docker compose up -d
 On start-up three one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
 `schema-init` registers the event schemas with `BACKWARD` compatibility, and `migrate` applies the
 TimescaleDB migrations in [db/migrations](db/migrations) with Flyway. All three are idempotent.
+
+Then `ingestion-app` polls the live Carbon Intensity API (on start-up and every half-hour) and `timescale-sink`
+writes the events to TimescaleDB. The first build of the two Java images takes a few minutes. A minute after
+start-up, the next half-hour's forecast for every region is in the database:
+
+```bash
+docker compose exec timescaledb psql -U gridpulse -d gridpulse -c \
+  "SELECT region, forecast_gco2_per_kwh, intensity_index FROM grid.carbon_intensity
+   WHERE issued_at IS NOT NULL AND valid_from = (SELECT min(valid_from) FROM grid.carbon_intensity WHERE issued_at IS NOT NULL)
+   ORDER BY 2;"
+```
 `docker compose down -v` stops everything and deletes the data volumes.
 
 To check the whole stack end to end (topics, schemas, a Kafka round trip, TimescaleDB):
