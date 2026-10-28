@@ -83,6 +83,26 @@ services:
       timeout: 5s
       retries: 20
 
+  # Applies db/migrations (ADR-0005). A one-shot job, so no service owns the schema;
+  # in Kubernetes the same image runs as a Job before the sink starts.
+  migrate:
+    image: flyway/flyway:13.10.0-alpine
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    command: ["migrate"]
+    environment:
+      FLYWAY_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-gridpulse}
+      FLYWAY_USER: ${POSTGRES_USER:-gridpulse}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set POSTGRES_PASSWORD}
+      FLYWAY_SCHEMAS: grid
+      FLYWAY_DEFAULT_SCHEMA: grid
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_CONNECT_RETRIES: "10"
+    volumes:
+      - ../../db/migrations:/flyway/sql:ro
+    restart: "no"
+
 volumes:
   redpanda-data:
   timescale-data:
