@@ -51,6 +51,15 @@ public enum EventType {
     return slug + ".schema.json";
   }
 
+  /** Every event topic (not the dead-letter topics), e.g. for a consumer subscribing to all. */
+  public static String[] allTopics() {
+    String[] topics = new String[values().length];
+    for (EventType type : values()) {
+      topics[type.ordinal()] = type.topic();
+    }
+    return topics;
+  }
+
   public static EventType fromWireName(String wireName) {
     for (EventType type : values()) {
       if (type.wireName.equals(wireName)) {

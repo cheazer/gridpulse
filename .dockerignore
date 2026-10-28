@@ -1,0 +1,10 @@
+.git
+.env
+**/build/
+**/.gradle/
+**/.kotlin/
+**/bin/
+**/obj/
+**/.venv/
+**/__pycache__/
+**/node_modules/

@@ -3,9 +3,9 @@ name: ingestion
 on:
   push:
     branches: [main]
-    paths: ["services/ingestion/**", "schemas/**", ".github/workflows/ingestion.yml"]
+    paths: ["services/ingestion/**", "schemas/**", "db/migrations/**", ".github/workflows/ingestion.yml"]
   pull_request:
-    paths: ["services/ingestion/**", "schemas/**", ".github/workflows/ingestion.yml"]
+    paths: ["services/ingestion/**", "schemas/**", "db/migrations/**", ".github/workflows/ingestion.yml"]
 
 permissions:
   contents: read
@@ -24,7 +24,7 @@ jobs:
           java-version: "21"
       # Caches dependencies and validates gradle-wrapper.jar against Gradle's published checksums.
       - uses: gradle/actions/setup-gradle@v4
-      - name: Compile (warnings are errors), check formatting, run tests
+      - name: Compile (warnings are errors), check formatting, unit and Testcontainers tests
         run: ./gradlew build --console=plain
       - name: Upload test reports
         if: failure()
@@ -32,3 +32,13 @@ jobs:
         with:
           name: ingestion-test-reports
           path: services/ingestion/**/build/reports/tests/
+
+  image:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [ingestion-app, timescale-sink]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build ${{ matrix.app }} image
+        run: docker build --build-arg APP=${{ matrix.app }} -f services/ingestion/Dockerfile -t gridpulse/${{ matrix.app }}:ci .
