@@ -29,6 +29,10 @@ create() {
   fi
 }
 
+# Dev-container mode turns auto-creation on. Turn it off so a typo in a producer's topic name
+# fails loudly instead of silently creating a new, empty topic.
+rpk cluster config set auto_create_topics_enabled false
+
 for topic in "${EVENT_TOPICS[@]}"; do
   create "$topic" "$PARTITIONS" "$RETENTION_MS"
   create "$topic.dlq" 1 "$DLQ_RETENTION_MS"

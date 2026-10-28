@@ -47,5 +47,7 @@ consumers are written in different languages, so the event contract must be lang
   this is irrelevant; it would be revisited if throughput became a constraint.
 - Breaking changes (renaming or removing a field, changing a type) require a new major version: new schema
   folder `v2/` and new topics `*.v2`, with a period of dual-publishing.
-- The per-type schemas `$ref` the shared envelope definitions. If the registry cannot resolve cross-file
-  references, we bundle each schema into a single self-contained document at build time.
+- The per-type schemas `$ref` the shared envelope definitions. These are registered as schema-registry
+  references (envelope first, then dependants); verified against Redpanda v26.2 by
+  `deploy/compose/scripts/smoke-test.sh`. Had that not worked, the fallback was to bundle each schema into one
+  self-contained document at build time.
