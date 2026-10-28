@@ -37,12 +37,18 @@ final class ElexonFixtures {
     return FixtureServer.start(
         BASE_PATH,
         Map.of(
-            "/demand/outturn\\?" + days, DIR + "demand-outturn.json",
-            "/datasets/FUELHH\\?" + days, DIR + "fuelhh.json",
-            "/balancing/settlement/system-prices/2026-10-27", DIR + "system-prices-2026-10-27.json",
-            "/balancing/settlement/system-prices/2026-10-28", DIR + "system-prices-2026-10-28.json",
-            "/datasets/NDF", DIR + "ndf.json",
-            "/datasets/TSDF\\?boundary=N", DIR + "tsdf.json"));
+            "/demand/outturn\\?" + days,
+            DIR + "demand-outturn.json",
+            "/datasets/FUELHH\\?" + days,
+            DIR + "fuelhh.json",
+            "/balancing/settlement/system-prices/2026-10-27",
+            DIR + "system-prices-2026-10-27.json",
+            "/balancing/settlement/system-prices/2026-10-28",
+            DIR + "system-prices-2026-10-28.json",
+            "/datasets/NDF",
+            DIR + "ndf.json",
+            "/datasets/TSDF\\?boundary=N",
+            DIR + "tsdf.json"));
   }
 
   static ElexonProperties properties(URI baseUrl) {

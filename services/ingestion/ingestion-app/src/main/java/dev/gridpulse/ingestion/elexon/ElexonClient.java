@@ -35,7 +35,8 @@ public class ElexonClient {
   private final HttpSource http;
 
   public ElexonClient(RestClient.Builder builder, ElexonProperties properties) {
-    this.http = new HttpSource("Elexon Insights API", builder, properties.baseUrl(), properties.http());
+    this.http =
+        new HttpSource("Elexon Insights API", builder, properties.baseUrl(), properties.http());
   }
 
   public List<DemandOutturn> demandOutturn(LocalDate from, LocalDate to) {

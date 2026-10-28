@@ -37,9 +37,7 @@ class ElexonMapperTest {
     assertThat(events).allSatisfy(e -> assertThat(e.isForecast()).isFalse());
     assertThat(events.subList(0, 2))
         .extracting(GridEvent::series, e -> ((Demand) e.payload()).demandMw())
-        .containsExactly(
-            tuple("indo", 23001.0),
-            tuple("itsdo", 28414.0));
+        .containsExactly(tuple("indo", 23001.0), tuple("itsdo", 28414.0));
     assertThat(events.getFirst().settlementPeriod()).isEqualTo(1);
     assertThat(((Demand) events.getFirst().payload()).demandType()).isEqualTo(DemandType.INDO);
   }
@@ -84,7 +82,8 @@ class ElexonMapperTest {
     assertThat(events).hasSize(48);
     SystemPrice first = (SystemPrice) events.getFirst().payload();
     assertThat(first.systemSellPriceGbpPerMwh()).isEqualTo(new BigDecimal("16.98")); // 16.97897...
-    assertThat(first.netImbalanceVolumeMwh()).isEqualTo(new BigDecimal("-216.862")); // -216.86169...
+    assertThat(first.netImbalanceVolumeMwh())
+        .isEqualTo(new BigDecimal("-216.862")); // -216.86169...
   }
 
   @Test
@@ -141,7 +140,11 @@ class ElexonMapperTest {
   void rowsWhoseSettlementPeriodDisagreesWithOursAreSkipped() {
     var row =
         new DemandOutturn(
-            Instant.parse("2026-10-27T18:00:00Z"), LocalDate.parse("2026-10-27"), 36, 30000.0, 32000.0);
+            Instant.parse("2026-10-27T18:00:00Z"),
+            LocalDate.parse("2026-10-27"),
+            36,
+            30000.0,
+            32000.0);
 
     assertThat(mapper.demandOutturn(List.of(row), POLLED_AT)).isEmpty(); // 18:00Z is SP37
   }

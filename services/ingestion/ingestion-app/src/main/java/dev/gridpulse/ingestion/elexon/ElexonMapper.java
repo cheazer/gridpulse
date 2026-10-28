@@ -107,7 +107,9 @@ public class ElexonMapper {
             List<FuelReading> readings =
                 periodRows.stream()
                     .filter(row -> row.generation() != null)
-                    .map(row -> new FuelReading(fuel(row.fuelType()), row.fuelType(), row.generation()))
+                    .map(
+                        row ->
+                            new FuelReading(fuel(row.fuelType()), row.fuelType(), row.generation()))
                     .toList();
             events.add(
                 actual(
@@ -118,7 +120,8 @@ public class ElexonMapper {
                     polledAt,
                     new GenerationMix(GenerationMix.Unit.MW, readings)));
           } catch (IllegalArgumentException e) {
-            // e.g. negative wind: impossible data. Skip the period; the next poll may have it fixed.
+            // e.g. negative wind: impossible data. Skip the period; the next poll may have it
+            // fixed.
             log.warn("Skipping FUELHH period starting {}: {}", start, e.getMessage());
           }
         });

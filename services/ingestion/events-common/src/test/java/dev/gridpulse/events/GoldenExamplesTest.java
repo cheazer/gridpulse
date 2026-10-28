@@ -73,7 +73,10 @@ class GoldenExamplesTest {
             golden.payload());
 
     // Golden examples may predate the current schema version; everything else must match.
-    assertThat(created).usingRecursiveComparison().ignoringFields("schemaVersion").isEqualTo(golden);
+    assertThat(created)
+        .usingRecursiveComparison()
+        .ignoringFields("schemaVersion")
+        .isEqualTo(golden);
     assertThat(created.schemaVersion()).isEqualTo(GridEvent.SCHEMA_VERSION);
   }
 

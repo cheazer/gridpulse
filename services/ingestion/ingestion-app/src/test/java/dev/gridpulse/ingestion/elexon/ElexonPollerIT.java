@@ -85,10 +85,14 @@ class ElexonPollerIT {
   /** Expected events per topic from the recorded responses. */
   private static final Map<EventType, Integer> EXPECTED =
       Map.of(
-          EventType.DEMAND, 2 * 90,
-          EventType.GENERATION_MIX, 90,
-          EventType.SYSTEM_PRICE, 48 + 41,
-          EventType.DEMAND_FORECAST, 64 + 64);
+          EventType.DEMAND,
+          2 * 90,
+          EventType.GENERATION_MIX,
+          90,
+          EventType.SYSTEM_PRICE,
+          48 + 41,
+          EventType.DEMAND_FORECAST,
+          64 + 64);
 
   @Test
   @Order(1)
@@ -127,9 +131,12 @@ class ElexonPollerIT {
   private static List<byte[]> consume(String topic, int expected) {
     Map<String, Object> config =
         Map.of(
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, REDPANDA.getBootstrapServers(),
-            ConsumerConfig.GROUP_ID_CONFIG, "elexon-it-" + topic,
-            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
+            REDPANDA.getBootstrapServers(),
+            ConsumerConfig.GROUP_ID_CONFIG,
+            "elexon-it-" + topic,
+            ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
+            "earliest");
     List<byte[]> values = new ArrayList<>();
     try (var consumer =
         new KafkaConsumer<>(config, new StringDeserializer(), new ByteArrayDeserializer())) {

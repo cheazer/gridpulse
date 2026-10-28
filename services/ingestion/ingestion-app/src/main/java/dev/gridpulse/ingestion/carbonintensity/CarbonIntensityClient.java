@@ -22,7 +22,8 @@ public class CarbonIntensityClient {
   private final HttpSource http;
 
   public CarbonIntensityClient(RestClient.Builder builder, CarbonIntensityProperties properties) {
-    this.http = new HttpSource("Carbon Intensity API", builder, properties.baseUrl(), properties.http());
+    this.http =
+        new HttpSource("Carbon Intensity API", builder, properties.baseUrl(), properties.http());
   }
 
   /** 48 hours from the period containing {@code from}, with actuals where known. */
