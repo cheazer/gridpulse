@@ -50,6 +50,7 @@ echo "--- timescaledb"
 version=$(docker compose exec -T timescaledb psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
   "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'")
 [[ -n $version ]] && pass "timescaledb extension $version" || fail "timescaledb extension not installed"
+bash db/tests/run.sh && pass "migrations apply, re-run as a no-op, and schema assertions hold" || fail "db/tests/run.sh"
 
 echo
 echo "$failures failure(s)"

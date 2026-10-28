@@ -46,8 +46,9 @@ docker compose up -d
 | Schema Registry | http://localhost:18081 |
 | TimescaleDB | `localhost:5432` (credentials from `.env`) |
 
-On start-up two one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics, and
-`schema-init` registers the event schemas with `BACKWARD` compatibility. Both are idempotent.
+On start-up three one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
+`schema-init` registers the event schemas with `BACKWARD` compatibility, and `migrate` applies the
+TimescaleDB migrations in [db/migrations](db/migrations) with Flyway. All three are idempotent.
 `docker compose down -v` stops everything and deletes the data volumes.
 
 To check the whole stack end to end (topics, schemas, a Kafka round trip, TimescaleDB):

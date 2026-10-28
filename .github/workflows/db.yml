@@ -1,0 +1,24 @@
+name: db
+
+on:
+  push:
+    branches: [main]
+    paths: ["db/**", "deploy/compose/**", "compose.yaml", ".github/workflows/db.yml"]
+  pull_request:
+    paths: ["db/**", "deploy/compose/**", "compose.yaml", ".github/workflows/db.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create .env with a throwaway password
+        run: sed "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+      - name: Migrate and run schema assertions
+        run: bash db/tests/run.sh
+      - name: Database logs on failure
+        if: failure()
+        run: docker compose logs timescaledb
