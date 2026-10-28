@@ -1,5 +1,6 @@
 package dev.gridpulse.ingestion.carbonintensity;
 
+import dev.gridpulse.ingestion.http.HttpSettings;
 import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -18,9 +19,4 @@ public record CarbonIntensityProperties(
     Duration lookback,
     Duration nationalRevisionInterval,
     Duration regionalRevisionInterval,
-    Duration connectTimeout,
-    Duration readTimeout,
-    Retry retry) {
-
-  public record Retry(int maxRetries, Duration initialDelay, Duration maxDelay) {}
-}
+    HttpSettings http) {}
