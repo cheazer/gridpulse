@@ -1,0 +1,19 @@
+{
+  "event_id": "593db987-5e38-5345-8993-dc072fdb213b",
+  "schema_version": "1.0.0",
+  "event_type": "carbon_intensity",
+  "source": "neso-carbon-intensity",
+  "series": "intensity",
+  "region": "london",
+  "valid_from": "2026-10-29T12:00:00Z",
+  "valid_to": "2026-10-29T12:30:00Z",
+  "settlement_date": "2026-10-29",
+  "settlement_period": 25,
+  "issued_at": "2026-10-28T09:30:00Z",
+  "ingested_at": "2026-10-28T09:31:05Z",
+  "payload": {
+    "forecast_gco2_per_kwh": 95,
+    "actual_gco2_per_kwh": null,
+    "index": "low"
+  }
+}

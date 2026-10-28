@@ -1,0 +1,20 @@
+name: schemas
+
+on:
+  push:
+    branches: [main]
+    paths: ["schemas/**", ".github/workflows/schemas.yml"]
+  pull_request:
+    paths: ["schemas/**", ".github/workflows/schemas.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - name: Validate golden examples against v1 schemas
+        run: uv run schemas/tools/validate_examples.py

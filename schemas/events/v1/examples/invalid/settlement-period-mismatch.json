@@ -1,0 +1,24 @@
+{
+  "expect_failure": "semantic",
+  "expect_check": "settlement",
+  "reason": "18:00Z on a GMT day is period 37, not 36",
+  "event": {
+    "event_id": "02903352-dee2-504f-abc8-385f37cff117",
+    "schema_version": "1.0.0",
+    "event_type": "carbon_intensity",
+    "source": "neso-carbon-intensity",
+    "series": "intensity",
+    "region": "GB",
+    "valid_from": "2026-10-27T18:00:00Z",
+    "valid_to": "2026-10-27T18:30:00Z",
+    "settlement_date": "2026-10-27",
+    "settlement_period": 36,
+    "issued_at": null,
+    "ingested_at": "2026-10-27T18:47:12.384Z",
+    "payload": {
+      "forecast_gco2_per_kwh": 168,
+      "actual_gco2_per_kwh": 172,
+      "index": "moderate"
+    }
+  }
+}

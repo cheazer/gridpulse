@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/system-price.schema.json",
+  "title": "System price v1",
+  "description": "Imbalance (cash-out) price for one settlement period. Since P305 (Nov 2015) sell and buy prices are equal, but both are kept to match the source.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "event_type": { "const": "system_price" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_sell_price_gbp_per_mwh", "system_buy_price_gbp_per_mwh", "net_imbalance_volume_mwh"],
+      "properties": {
+        "system_sell_price_gbp_per_mwh": { "type": "number" },
+        "system_buy_price_gbp_per_mwh": { "type": "number" },
+        "net_imbalance_volume_mwh": { "type": ["number", "null"] }
+      }
+    }
+  }
+}

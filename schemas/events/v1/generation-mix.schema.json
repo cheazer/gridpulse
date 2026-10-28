@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/generation-mix.schema.json",
+  "title": "Generation mix v1",
+  "description": "Generation by fuel for one half-hour. Elexon FUELHH reports MW by BM fuel type (transmission-connected only, so solar and most embedded wind are absent); the Carbon Intensity API reports percentages.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "event_type": { "const": "generation_mix" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "fuels"],
+      "properties": {
+        "unit": { "type": "string", "enum": ["MW", "percent"] },
+        "fuels": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["fuel", "source_fuel_code", "value"],
+            "properties": {
+              "fuel": {
+                "description": "Normalised fuel category used across sources.",
+                "type": "string",
+                "enum": ["gas", "coal", "oil", "nuclear", "wind", "solar", "hydro", "biomass", "storage", "imports", "other"]
+              },
+              "source_fuel_code": {
+                "description": "Fuel code exactly as the source reported it (e.g. CCGT, INTFR, NPSHYD), kept for traceability.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "value": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  }
+}
