@@ -36,6 +36,7 @@ services:
     entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
     environment:
       RPK_BROKERS: redpanda:9092
+      RPK_ADMIN_HOSTS: redpanda:9644   # cluster config goes through the admin API, not the Kafka port
     volumes:
       - ./scripts:/scripts:ro
     restart: "no"
