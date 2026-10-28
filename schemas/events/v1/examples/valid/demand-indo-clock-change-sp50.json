@@ -1,0 +1,18 @@
+{
+  "event_id": "547255fd-a437-53b6-8feb-537e51215ab4",
+  "schema_version": "1.0.0",
+  "event_type": "demand",
+  "source": "elexon-insights",
+  "series": "indo",
+  "region": "GB",
+  "valid_from": "2026-10-25T23:30:00Z",
+  "valid_to": "2026-10-26T00:00:00Z",
+  "settlement_date": "2026-10-25",
+  "settlement_period": 50,
+  "issued_at": null,
+  "ingested_at": "2026-10-26T00:20:41Z",
+  "payload": {
+    "demand_type": "INDO",
+    "demand_mw": 24315
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/weather.schema.json",
+  "title": "Weather v1",
+  "description": "Hourly weather at one location: an observation when issued_at is null, otherwise a forecast. series is the location id; region is the grid region the location represents.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "event_type": { "const": "weather" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "temperature_2m_c", "wind_speed_10m_ms", "wind_speed_100m_ms", "shortwave_radiation_wm2", "cloud_cover_pct"],
+      "properties": {
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "latitude", "longitude"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+            "latitude": { "type": "number", "minimum": 49.0, "maximum": 61.0 },
+            "longitude": { "type": "number", "minimum": -9.0, "maximum": 2.5 }
+          }
+        },
+        "temperature_2m_c": { "type": ["number", "null"], "minimum": -40, "maximum": 50 },
+        "wind_speed_10m_ms": { "$ref": "envelope.schema.json#/definitions/nonNegativeNumberOrNull" },
+        "wind_speed_100m_ms": { "$ref": "envelope.schema.json#/definitions/nonNegativeNumberOrNull" },
+        "shortwave_radiation_wm2": { "$ref": "envelope.schema.json#/definitions/nonNegativeNumberOrNull" },
+        "cloud_cover_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+      }
+    }
+  }
+}

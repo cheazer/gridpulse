@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/carbon-intensity.schema.json",
+  "title": "Carbon intensity v1",
+  "description": "Carbon intensity of electricity for one half-hour, national or regional. Regional data from the Carbon Intensity API is forecast-only.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "event_type": { "const": "carbon_intensity" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["forecast_gco2_per_kwh", "actual_gco2_per_kwh", "index"],
+      "anyOf": [
+        { "properties": { "forecast_gco2_per_kwh": { "type": "integer" } } },
+        { "properties": { "actual_gco2_per_kwh": { "type": "integer" } } }
+      ],
+      "properties": {
+        "forecast_gco2_per_kwh": { "type": ["integer", "null"], "minimum": 0, "maximum": 2000 },
+        "actual_gco2_per_kwh": { "type": ["integer", "null"], "minimum": 0, "maximum": 2000 },
+        "index": {
+          "description": "NESO's qualitative band for the intensity.",
+          "type": ["string", "null"],
+          "enum": ["very low", "low", "moderate", "high", "very high", null]
+        }
+      }
+    }
+  }
+}

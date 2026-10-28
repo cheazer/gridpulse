@@ -1,0 +1,31 @@
+{
+  "expect_failure": "semantic",
+  "expect_check": "event_id",
+  "reason": "event_id must be the UUIDv5 of the identity fields; here issued_at changed but the id did not",
+  "event": {
+    "event_id": "1da5b136-334f-5e29-b049-2239d207eb01",
+    "schema_version": "1.0.0",
+    "event_type": "weather",
+    "source": "open-meteo",
+    "series": "edinburgh",
+    "region": "south-scotland",
+    "valid_from": "2026-10-29T12:00:00Z",
+    "valid_to": "2026-10-29T13:00:00Z",
+    "settlement_date": null,
+    "settlement_period": null,
+    "issued_at": "2026-10-28T12:00:00Z",
+    "ingested_at": "2026-10-28T06:10:00Z",
+    "payload": {
+      "location": {
+        "id": "edinburgh",
+        "latitude": 55.9533,
+        "longitude": -3.1883
+      },
+      "temperature_2m_c": 9.4,
+      "wind_speed_10m_ms": 7.2,
+      "wind_speed_100m_ms": 12.8,
+      "shortwave_radiation_wm2": 148.0,
+      "cloud_cover_pct": 62
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/demand.schema.json",
+  "title": "Demand outturn v1",
+  "description": "Measured electricity demand for one half-hour. demand_type matters: each definition includes or excludes different flows, and forecasts must be compared like-for-like.",
+  "allOf": [{ "$ref": "envelope.schema.json" }],
+  "properties": {
+    "event_type": { "const": "demand" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["demand_type", "demand_mw"],
+      "properties": {
+        "demand_type": { "$ref": "#/definitions/demandType" },
+        "demand_mw": { "type": "number", "minimum": 0 }
+      }
+    }
+  },
+  "definitions": {
+    "demandType": {
+      "description": "ND: National Demand. TSD: Transmission System Demand. INDO: Initial National Demand Outturn. ITSDO: Initial Transmission System Demand Outturn.",
+      "type": "string",
+      "enum": ["ND", "TSD", "INDO", "ITSDO"]
+    }
+  }
+}

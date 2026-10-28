@@ -1,0 +1,24 @@
+{
+  "expect_failure": "semantic",
+  "expect_check": "settlement",
+  "reason": "on 2026-10-24 (BST) 12:00Z is 13:00 local, period 27, but 25 was computed from the UTC hour",
+  "event": {
+    "event_id": "9527e6c7-b786-5a60-a51d-aa33444b62e3",
+    "schema_version": "1.0.0",
+    "event_type": "carbon_intensity",
+    "source": "neso-carbon-intensity",
+    "series": "intensity",
+    "region": "london",
+    "valid_from": "2026-10-24T12:00:00Z",
+    "valid_to": "2026-10-24T12:30:00Z",
+    "settlement_date": "2026-10-24",
+    "settlement_period": 25,
+    "issued_at": "2026-10-23T09:30:00Z",
+    "ingested_at": "2026-10-23T09:31:05Z",
+    "payload": {
+      "forecast_gco2_per_kwh": 95,
+      "actual_gco2_per_kwh": null,
+      "index": "low"
+    }
+  }
+}

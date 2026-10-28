@@ -1,0 +1,29 @@
+{
+  "event_id": "1f911f21-645e-5af7-b82c-ce53550d2bdb",
+  "schema_version": "1.0.0",
+  "event_type": "generation_mix",
+  "source": "elexon-insights",
+  "series": "fuelhh",
+  "region": "GB",
+  "valid_from": "2026-10-27T18:00:00Z",
+  "valid_to": "2026-10-27T18:30:00Z",
+  "settlement_date": "2026-10-27",
+  "settlement_period": 37,
+  "issued_at": null,
+  "ingested_at": "2026-10-27T18:50:00Z",
+  "payload": {
+    "unit": "MW",
+    "fuels": [
+      { "fuel": "gas", "source_fuel_code": "CCGT", "value": 11240 },
+      { "fuel": "gas", "source_fuel_code": "OCGT", "value": 35 },
+      { "fuel": "nuclear", "source_fuel_code": "NUCLEAR", "value": 4120 },
+      { "fuel": "wind", "source_fuel_code": "WIND", "value": 9870 },
+      { "fuel": "biomass", "source_fuel_code": "BIOMASS", "value": 1890 },
+      { "fuel": "hydro", "source_fuel_code": "NPSHYD", "value": 310 },
+      { "fuel": "storage", "source_fuel_code": "PS", "value": 620 },
+      { "fuel": "imports", "source_fuel_code": "INTFR", "value": 1500 },
+      { "fuel": "imports", "source_fuel_code": "INTNSL", "value": 1400 },
+      { "fuel": "other", "source_fuel_code": "OTHER", "value": 210 }
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gridpulse.example/schemas/events/v1/demand-forecast.schema.json",
+  "title": "Demand forecast v1",
+  "description": "A third-party demand forecast (e.g. NESO's day-ahead), stored per revision so GridPulse models can be benchmarked against what was actually known at the time.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    { "properties": { "issued_at": { "type": "string" } } }
+  ],
+  "properties": {
+    "event_type": { "const": "demand_forecast" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["demand_type", "forecast_mw", "product"],
+      "properties": {
+        "demand_type": { "$ref": "demand.schema.json#/definitions/demandType" },
+        "forecast_mw": { "type": "number", "minimum": 0 },
+        "product": {
+          "description": "Source product code, e.g. NDF (day-ahead national demand forecast) or NDFD (2-14 days ahead).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    }
+  }
+}

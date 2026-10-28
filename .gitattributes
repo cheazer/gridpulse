@@ -1,0 +1,17 @@
+# Normalise line endings in the repo; check out with native endings except where tools need LF.
+* text=auto
+
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+*.sql       text eol=lf
+gradlew     text eol=lf
+
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+*.jar       binary
+*.png       binary
+*.jpg       binary
+*.parquet   binary

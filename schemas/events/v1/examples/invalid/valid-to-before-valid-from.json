@@ -1,0 +1,24 @@
+{
+  "expect_failure": "semantic",
+  "expect_check": "interval",
+  "reason": "an interval must end after it starts",
+  "event": {
+    "event_id": "0534697e-e410-5cc8-bb4e-63b174c71523",
+    "schema_version": "1.0.0",
+    "event_type": "system_price",
+    "source": "elexon-insights",
+    "series": "system-price",
+    "region": "GB",
+    "valid_from": "2026-10-27T18:00:00Z",
+    "valid_to": "2026-10-27T17:30:00Z",
+    "settlement_date": "2026-10-27",
+    "settlement_period": 37,
+    "issued_at": null,
+    "ingested_at": "2026-10-27T19:05:00Z",
+    "payload": {
+      "system_sell_price_gbp_per_mwh": 92.4,
+      "system_buy_price_gbp_per_mwh": 92.4,
+      "net_imbalance_volume_mwh": -312.5
+    }
+  }
+}

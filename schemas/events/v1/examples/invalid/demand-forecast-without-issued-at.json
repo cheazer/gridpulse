@@ -1,0 +1,23 @@
+{
+  "expect_failure": "schema",
+  "reason": "forecasts must say when they were issued",
+  "event": {
+    "event_id": "d3903453-9cdc-5f1c-814c-3ea66daf3fbd",
+    "schema_version": "1.0.0",
+    "event_type": "demand_forecast",
+    "source": "elexon-insights",
+    "series": "ndf",
+    "region": "GB",
+    "valid_from": "2026-10-29T17:00:00Z",
+    "valid_to": "2026-10-29T17:30:00Z",
+    "settlement_date": "2026-10-29",
+    "settlement_period": 35,
+    "issued_at": null,
+    "ingested_at": "2026-10-28T09:15:22Z",
+    "payload": {
+      "demand_type": "ND",
+      "forecast_mw": 33850,
+      "product": "NDF"
+    }
+  }
+}
