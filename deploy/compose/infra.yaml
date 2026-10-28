@@ -1,0 +1,90 @@
+# Stateful infrastructure: the event log (Redpanda), its UI, and the time-series store.
+# Ports are exposed on localhost only, for services running on the host during development.
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      # Two listeners: 'internal' for containers on the compose network, 'external' for the host.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      # Topics are created explicitly (create-topics.sh). With auto-create on, a typo in a
+      # producer's topic name silently creates a new, empty topic instead of failing.
+      - --set=redpanda.auto_create_topics_enabled=false
+    ports:
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:18081:18081"
+      - "127.0.0.1:19644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
+    environment:
+      RPK_BROKERS: redpanda:9092
+    volumes:
+      - ./scripts:/scripts:ro
+    restart: "no"
+
+  schema-init:
+    image: python:3.12-slim
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    command: ["python", "-I", "/repo/schemas/tools/register_schemas.py"]
+    environment:
+      SCHEMA_REGISTRY_URL: http://redpanda:8081
+    volumes:
+      - ../../schemas:/repo/schemas:ro
+    restart: "no"
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.12.0
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      SCHEMAREGISTRY_ENABLED: "true"
+      SCHEMAREGISTRY_URLS: http://redpanda:8081
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  timescaledb:
+    image: timescale/timescaledb:2.30.2-pg17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gridpulse}
+      POSTGRES_USER: ${POSTGRES_USER:-gridpulse}
+      # No default: fail fast with a clear message rather than ship a password in the repo.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set POSTGRES_PASSWORD}
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      - "127.0.0.1:${TIMESCALE_PORT:-5432}:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  redpanda-data:
+  timescale-data:
