@@ -16,3 +16,10 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers-redpanda")
     testImplementation("org.awaitility:awaitility")
 }
+
+// Golden example events from the repo root: mapper output is checked against them.
+tasks.processTestResources {
+    from(rootDir.resolve("../../schemas/events/v1/examples/valid")) {
+        into("gridpulse/examples/v1/valid")
+    }
+}
