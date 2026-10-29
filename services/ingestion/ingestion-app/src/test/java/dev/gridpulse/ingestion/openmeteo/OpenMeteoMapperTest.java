@@ -82,6 +82,32 @@ class OpenMeteoMapperTest {
   }
 
   @Test
+  void dayAheadForecastsAreRevisionsIssuedInTheBucketADayEarlier() {
+    List<GridEvent> events =
+        mapper.dayAheadForecasts(LOCATIONS, OpenMeteoFixtures.dayAheadForecasts(), POLLED_AT);
+
+    assertThat(events).hasSize(48 * 8);
+    // 05:00 on 29 Oct 2024 was forecast a day earlier: the 6-hour bucket containing 05:00 on the
+    // 28th.
+    GridEvent fiveAm =
+        events.stream()
+            .filter(e -> e.validFrom().equals(Instant.parse("2024-10-29T05:00:00Z")))
+            .findFirst()
+            .orElseThrow();
+    assertThat(fiveAm.issuedAt()).isEqualTo(Instant.parse("2024-10-28T00:00:00Z"));
+    assertThat(events).allSatisfy(e -> assertThat(e.issuedAt()).isBefore(e.validFrom()));
+
+    var codec = new EventCodec();
+    var validator = new EventValidator();
+    assertThat(events)
+        .allSatisfy(
+            e -> {
+              assertThat(validator.validate(codec.toTree(e))).isEmpty();
+              assertThat(EventRules.violations(e)).isEmpty();
+            });
+  }
+
+  @Test
   void hoursWithNoValuesAreSkippedButPartialHoursAreKept() {
     long hour = Instant.parse("2026-10-20T00:00:00Z").getEpochSecond();
     var hourly =

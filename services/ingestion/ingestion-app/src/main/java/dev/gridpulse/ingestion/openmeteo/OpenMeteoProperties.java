@@ -17,6 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record OpenMeteoProperties(
     URI forecastBaseUrl,
     URI archiveBaseUrl,
+    URI previousRunsBaseUrl,
     boolean pollOnStartup,
     int forecastDays,
     Duration revisionInterval,

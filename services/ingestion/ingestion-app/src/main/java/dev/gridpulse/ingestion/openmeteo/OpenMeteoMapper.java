@@ -14,6 +14,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import org.springframework.stereotype.Component;
 
 /**
@@ -35,20 +36,35 @@ public class OpenMeteoMapper {
   public List<GridEvent> forecasts(
       List<Location> locations, List<LocationResponse> responses, Instant polledAt) {
     Instant issuedAt = RevisionBuckets.start(polledAt, revisionInterval);
-    return map(locations, responses, polledAt, issuedAt, hour -> hour.isAfter(polledAt));
+    return map(locations, responses, polledAt, hour -> issuedAt, hour -> hour.isAfter(polledAt));
   }
 
   /** Reanalysis: what the weather actually was. Hours with no values yet are skipped. */
   public List<GridEvent> reanalysis(
       List<Location> locations, List<LocationResponse> responses, Instant polledAt) {
-    return map(locations, responses, polledAt, null, hour -> true);
+    return map(locations, responses, polledAt, hour -> null, hour -> true);
+  }
+
+  /**
+   * Archived day-ahead forecasts (previous-runs API, {@code _previous_day1}): each hour's value as
+   * forecast by the model run about a day earlier. {@code issued_at} is that run's 6-hour bucket,
+   * an approximation, since the API doesn't name the exact run (ADR-0009).
+   */
+  public List<GridEvent> dayAheadForecasts(
+      List<Location> locations, List<LocationResponse> responses, Instant polledAt) {
+    return map(
+        locations,
+        responses,
+        polledAt,
+        hour -> RevisionBuckets.start(hour.minus(Duration.ofDays(1)), revisionInterval),
+        hour -> true);
   }
 
   private static List<GridEvent> map(
       List<Location> locations,
       List<LocationResponse> responses,
       Instant polledAt,
-      Instant issuedAt,
+      UnaryOperator<Instant> issuedAt,
       Predicate<Instant> include) {
     List<GridEvent> events = new ArrayList<>();
     for (int i = 0; i < locations.size(); i++) {
@@ -79,7 +95,7 @@ public class OpenMeteoMapper {
                 hour,
                 hour.plus(HOUR),
                 null, // hourly weather isn't aligned to settlement periods
-                issuedAt,
+                issuedAt.apply(hour),
                 polledAt.truncatedTo(ChronoUnit.MILLIS),
                 weather));
       }

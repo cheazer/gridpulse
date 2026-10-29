@@ -43,6 +43,18 @@ class OpenMeteoClientTest {
   }
 
   @Test
+  void dayAheadForecastsMapThePreviousRunVariablesOntoTheUsualShape() {
+    var responses =
+        client.dayAheadForecasts(
+            LOCATIONS, LocalDate.parse("2024-10-29"), LocalDate.parse("2024-10-30"));
+
+    assertThat(responses).hasSize(8);
+    // The _previous_day1 suffix is stripped, so every variable is populated, not null.
+    assertThat(responses.getFirst().hourly().temperature2m()).hasSize(48).doesNotContainNull();
+    assertThat(responses.getFirst().hourly().windSpeed100m()).doesNotContainNull();
+  }
+
+  @Test
   void handlesTheBareObjectReturnedForASingleLocation() {
     assertThat(client.forecast(LOCATIONS.subList(0, 1), 3)).hasSize(1);
   }

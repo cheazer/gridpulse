@@ -6,6 +6,7 @@ import dev.gridpulse.ingestion.openmeteo.OpenMeteoProperties.Location;
 import dev.gridpulse.ingestion.testing.FixtureServer;
 import dev.gridpulse.ingestion.testing.TestHttpSettings;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -49,12 +50,26 @@ final class OpenMeteoFixtures {
             Pattern.quote("/archive" + all + "&start_date=2026-10-18&end_date=2026-10-27"),
             DIR + "archive.json",
             Pattern.quote("/forecast" + london + "&forecast_days=3"),
-            DIR + "forecast-single.json"));
+            DIR + "forecast-single.json",
+            Pattern.quote(
+                "/forecast"
+                    + OpenMeteoClient.coordinates(LOCATIONS)
+                    + OpenMeteoClient.PREVIOUS_DAY_COMMON
+                    + "&start_date=2024-10-29&end_date=2024-10-30"),
+            DIR + "previous-runs.json"));
   }
 
   static OpenMeteoProperties properties(URI baseUrl) {
     return new OpenMeteoProperties(
-        baseUrl, baseUrl, false, 3, Duration.ofHours(6), 10, LOCATIONS, TestHttpSettings.fast());
+        baseUrl,
+        baseUrl,
+        baseUrl,
+        false,
+        3,
+        Duration.ofHours(6),
+        10,
+        LOCATIONS,
+        TestHttpSettings.fast());
   }
 
   static List<LocationResponse> forecast() {
@@ -63,6 +78,14 @@ final class OpenMeteoFixtures {
 
   static List<LocationResponse> reanalysis() {
     return read("archive.json");
+  }
+
+  /** The recorded previous-runs response with the lead suffix stripped, as the client does. */
+  static List<LocationResponse> dayAheadForecasts() {
+    String body =
+        new String(FixtureServer.resource(DIR + "previous-runs.json"), StandardCharsets.UTF_8)
+            .replace(OpenMeteoClient.PREVIOUS_DAY + "\"", "\"");
+    return List.of(JSON.readValue(body, LocationResponse[].class));
   }
 
   private static List<LocationResponse> read(String file) {

@@ -4,6 +4,7 @@ import dev.gridpulse.ingestion.http.HttpSource;
 import dev.gridpulse.ingestion.openmeteo.OpenMeteoApi.LocationResponse;
 import dev.gridpulse.ingestion.openmeteo.OpenMeteoProperties.Location;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Hourly weather for all configured locations in one request per call (ADR-0008). Results are in
@@ -24,8 +26,19 @@ public class OpenMeteoClient {
   static final String COMMON =
       "&hourly=" + VARIABLES + "&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT";
 
+  /** The previous-runs API names each variable with the forecast's lead, e.g. a day earlier. */
+  static final String PREVIOUS_DAY = "_previous_day1";
+
+  static final String PREVIOUS_DAY_COMMON =
+      "&hourly="
+          + Arrays.stream(VARIABLES.split(","))
+              .map(v -> v + PREVIOUS_DAY)
+              .collect(Collectors.joining(","))
+          + "&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT";
+
   private final HttpSource forecastApi;
   private final HttpSource archiveApi;
+  private final HttpSource previousRunsApi;
   private final JsonMapper json;
 
   public OpenMeteoClient(
@@ -36,6 +49,12 @@ public class OpenMeteoClient {
     this.archiveApi =
         new HttpSource(
             "Open-Meteo archive API", builder, properties.archiveBaseUrl(), properties.http());
+    this.previousRunsApi =
+        new HttpSource(
+            "Open-Meteo previous-runs API",
+            builder,
+            properties.previousRunsBaseUrl(),
+            properties.http());
     this.json = json;
   }
 
@@ -50,6 +69,27 @@ public class OpenMeteoClient {
       List<Location> locations, LocalDate start, LocalDate end) {
     String query = coordinates(locations) + COMMON + "&start_date=" + start + "&end_date=" + end;
     return read(archiveApi.get("/archive" + query, JsonNode.class), locations);
+  }
+
+  /**
+   * Archived day-ahead forecasts for whole UTC days, {@code start} to {@code end} inclusive: each
+   * hour as the model run about a day earlier forecast it.
+   */
+  public List<LocationResponse> dayAheadForecasts(
+      List<Location> locations, LocalDate start, LocalDate end) {
+    String query =
+        coordinates(locations) + PREVIOUS_DAY_COMMON + "&start_date=" + start + "&end_date=" + end;
+    JsonNode body = previousRunsApi.get("/forecast" + query, JsonNode.class);
+    // Strip the lead suffix so the response maps onto the same shape as live forecasts.
+    for (JsonNode location : body.isArray() ? body.valueStream().toList() : List.of(body)) {
+      ObjectNode hourly = (ObjectNode) location.get("hourly");
+      for (String name : List.copyOf(hourly.propertyNames())) {
+        if (name.endsWith(PREVIOUS_DAY)) {
+          hourly.set(name.substring(0, name.length() - PREVIOUS_DAY.length()), hourly.remove(name));
+        }
+      }
+    }
+    return read(body, locations);
   }
 
   static String coordinates(List<Location> locations) {
