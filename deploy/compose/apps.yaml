@@ -16,6 +16,27 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     restart: unless-stopped
 
+  # One-off historical load (ADR-0009). Not started by `docker compose up`; run it with
+  #   docker compose --profile backfill run --rm backfill
+  # It resumes from its checkpoints if interrupted. Narrow it with `run -e`, e.g.
+  #   -e GRIDPULSE_BACKFILL_JOBS=elexon-ndf -e GRIDPULSE_BACKFILL_FROM=2025-01-01
+  backfill:
+    profiles: [backfill]
+    build:
+      context: ../..
+      dockerfile: services/ingestion/Dockerfile
+      args:
+        APP: ingestion-app
+    command: ["--spring.profiles.active=backfill"]
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      schema-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    restart: "no"
+
   timescale-sink:
     build:
       context: ../..

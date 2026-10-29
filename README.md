@@ -68,6 +68,19 @@ To check the whole stack end to end (topics, schemas, a Kafka round trip, Timesc
 bash deploy/compose/scripts/smoke-test.sh
 ```
 
+### Loading history
+
+Live polling only looks back hours. To load two years of history through the same pipeline
+([ADR-0009](docs/adr/0009-backfill.md)):
+
+```bash
+docker compose --profile backfill run --rm backfill
+```
+
+It works through each dataset in chunks sized to the source's limits, records a checkpoint after each chunk,
+and resumes where it stopped if interrupted. Narrow it with `-e GRIDPULSE_BACKFILL_JOBS=elexon-ndf` or
+`-e GRIDPULSE_BACKFILL_FROM=2025-01-01`.
+
 ## Data sources
 
 | Source | Used for | Licence |

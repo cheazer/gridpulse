@@ -21,7 +21,7 @@ docker compose run --rm schema-init && pass "schema-init exited 0" || fail "sche
 echo "--- topics"
 topics=$(docker compose exec -T redpanda rpk topic list | awk 'NR>1 {print $1}' | grep '^gridpulse\.' | sort)
 count=$(grep -c . <<<"$topics")
-[[ $count -eq 12 ]] && pass "12 gridpulse topics (6 event + 6 dlq)" || fail "expected 12 topics, found $count: $topics"
+[[ $count -eq 13 ]] && pass "13 gridpulse topics (6 event + 6 dlq + backfill checkpoints)" || fail "expected 13 topics, found $count: $topics"
 autocreate=$(docker compose exec -T redpanda rpk cluster config get auto_create_topics_enabled)
 [[ $autocreate == false ]] && pass "topic auto-creation disabled" || fail "auto_create_topics_enabled=$autocreate"
 partitions=$(docker compose exec -T redpanda rpk topic describe gridpulse.demand.v1 -p | awk 'NR>1' | grep -c .)
