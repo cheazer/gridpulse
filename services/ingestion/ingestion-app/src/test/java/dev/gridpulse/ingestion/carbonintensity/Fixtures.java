@@ -33,6 +33,8 @@ final class Fixtures {
         "",
         Map.of(
             "/intensity/" + API_TIME + "/fw48h", "/fixtures/carbon-intensity/national.json",
+            // History (backfill): the same recorded periods serve any from/to range.
+            "/intensity/" + API_TIME + "/" + API_TIME, "/fixtures/carbon-intensity/national.json",
             "/regional/intensity/" + API_TIME + "/fw48h",
                 "/fixtures/carbon-intensity/regional.json"));
   }

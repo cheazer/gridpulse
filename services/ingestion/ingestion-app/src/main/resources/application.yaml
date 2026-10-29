@@ -78,3 +78,7 @@ gridpulse:
           max-retries: 4
           initial-delay: PT1S
           max-delay: PT30S
+
+  backfill: # ADR-0009; run with the "backfill" profile
+    years: 2
+    checkpoint-topic: gridpulse.backfill.checkpoints

@@ -10,6 +10,8 @@ import dev.gridpulse.events.GridEvent;
 import dev.gridpulse.events.Region;
 import dev.gridpulse.events.SettlementPeriods;
 import dev.gridpulse.events.Source;
+import dev.gridpulse.events.payload.Demand;
+import dev.gridpulse.events.payload.Demand.DemandType;
 import dev.gridpulse.events.payload.SystemPrice;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -18,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +51,8 @@ import org.testcontainers.utility.DockerImageName;
     properties = {
       "spring.flyway.locations=filesystem:${gridpulse.migrations}",
       "spring.flyway.schemas=grid",
-      "spring.flyway.default-schema=grid"
+      "spring.flyway.default-schema=grid",
+      "gridpulse.sink.aggregates.refresh-interval=PT1S"
     })
 @Testcontainers
 class SinkIT {
@@ -150,6 +154,47 @@ class SinkIT {
   private void send(byte[] json) {
     GridEvent event = codec.decode(json);
     kafka.send(event.eventType().topic(), event.partitionKey(), json).join();
+  }
+
+  @Test
+  void backfilledHistoryAppearsInTheDailyAggregate() {
+    // A recent row, materialised: the aggregate's watermark is now near the present, so from here
+    // on real-time aggregation only reads raw rows newer than that.
+    GridEvent recent =
+        demand(Instant.now().minus(Duration.ofDays(2)).truncatedTo(ChronoUnit.HOURS), 25000);
+    send(codec.encode(recent));
+    await().atMost(Duration.ofSeconds(60)).until(() -> rowExists("demand", recent.eventId()));
+    jdbc.update("CALL refresh_continuous_aggregate('grid.demand_daily', NULL, now())");
+
+    // History far below the watermark, as a backfill would write it.
+    GridEvent old = demand(Instant.parse("2025-01-15T12:00:00Z"), 41000);
+    send(codec.encode(old));
+
+    // Only the sink's AggregateRefresher can make it visible.
+    await()
+        .atMost(Duration.ofSeconds(60))
+        .untilAsserted(
+            () ->
+                assertThat(
+                        jdbc.queryForList(
+                            "SELECT max_mw FROM grid.demand_daily WHERE demand_type = 'ITSDO'"
+                                + " AND day = '2025-01-15 00:00:00 Europe/London'",
+                            Double.class))
+                    .containsExactly(41000.0));
+  }
+
+  private static GridEvent demand(Instant validFrom, double mw) {
+    return GridEvent.create(
+        EventType.DEMAND,
+        Source.ELEXON_INSIGHTS,
+        "itsdo",
+        Region.GB,
+        validFrom,
+        validFrom.plus(SettlementPeriods.PERIOD_LENGTH),
+        SettlementPeriods.of(validFrom),
+        null,
+        Instant.parse("2026-10-29T12:00:00Z"),
+        new Demand(DemandType.ITSDO, mw));
   }
 
   private static GridEvent systemPrice(Instant validFrom) {

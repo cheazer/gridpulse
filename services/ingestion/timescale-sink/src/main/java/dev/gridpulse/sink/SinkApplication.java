@@ -1,6 +1,7 @@
 package dev.gridpulse.sink;
 
 import dev.gridpulse.events.EventCodec;
+import java.time.Clock;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -8,9 +9,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.kafka.core.KafkaOperations;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 @SpringBootApplication
+@EnableScheduling
 public class SinkApplication {
 
   public static void main(String[] args) {
@@ -20,6 +23,11 @@ public class SinkApplication {
   @Bean
   EventCodec eventCodec() {
     return new EventCodec();
+  }
+
+  @Bean
+  Clock clock() {
+    return Clock.systemUTC();
   }
 
   /**

@@ -48,7 +48,10 @@ final class ElexonFixtures {
             "/datasets/NDF",
             DIR + "ndf.json",
             "/datasets/TSDF\\?boundary=N",
-            DIR + "tsdf.json"));
+            DIR + "tsdf.json",
+            // History (backfill): one day of NDF publish times.
+            "/datasets/NDF\\?publishDateTimeFrom=2026-10-28T00:00Z&publishDateTimeTo=2026-10-29T00:00Z",
+            DIR + "ndf.json"));
   }
 
   static ElexonProperties properties(URI baseUrl) {

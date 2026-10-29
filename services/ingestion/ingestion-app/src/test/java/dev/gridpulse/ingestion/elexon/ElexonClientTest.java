@@ -42,6 +42,16 @@ class ElexonClientTest {
   }
 
   @Test
+  void historyFetchesOneDayOfForecastRevisionsByPublishTime() {
+    assertThat(client.dayAheadForecastsPublished(DayAheadProduct.NDF, TODAY, TODAY.plusDays(1)))
+        .hasSize(64);
+
+    assertThat(api.requestedPaths())
+        .containsExactly(
+            "/datasets/NDF?publishDateTimeFrom=2026-10-28T00:00Z&publishDateTimeTo=2026-10-29T00:00Z");
+  }
+
+  @Test
   void retriesTransientFailures() {
     api.failNext(502, 503);
 
