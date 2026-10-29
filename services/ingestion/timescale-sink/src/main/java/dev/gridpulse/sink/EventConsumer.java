@@ -18,10 +18,12 @@ public class EventConsumer {
 
   private final EventCodec codec;
   private final EventWriter writer;
+  private final AggregateRefresher aggregates;
 
-  public EventConsumer(EventCodec codec, EventWriter writer) {
+  public EventConsumer(EventCodec codec, EventWriter writer, AggregateRefresher aggregates) {
     this.codec = codec;
     this.writer = writer;
+    this.aggregates = aggregates;
   }
 
   @KafkaListener(topics = "#{T(dev.gridpulse.events.EventType).allTopics()}")
@@ -33,13 +35,18 @@ public class EventConsumer {
       } catch (RuntimeException e) {
         // The error handler commits offsets up to the failed record, so the records before it
         // must be written first. It then dead-letters record i and redelivers the rest.
-        writer.write(events);
+        write(events);
         throw new BatchListenerFailedException(
             "undecodable record",
             new UndecodableEventException("record is not a valid GridPulse event", e),
             i);
       }
     }
+    write(events);
+  }
+
+  private void write(List<GridEvent> events) {
     writer.write(events);
+    aggregates.record(events); // after the commit, so a refresh always sees these rows
   }
 }

@@ -23,3 +23,9 @@ spring:
       type: batch
       ack-mode: batch # commit offsets after the listener (and so the DB transaction) returns
       concurrency: 3
+
+gridpulse:
+  sink:
+    aggregates: # ADR-0009: refresh daily views for writes older than the policy reaches
+      policy-window: P30D # must match start_offset in db/migrations/V3
+      refresh-interval: PT1M
