@@ -3,7 +3,7 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phase 1 in progress (ingestion + storage). This README grows into the full write-up in Phase 5.
+> **Status:** Phase 1 complete: live ingestion from three sources, two years of history loaded, and a data-quality report. Next: Phase 2, forecasting. This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -97,6 +97,21 @@ Measured on a 2-core Codespace (29 Oct 2026), two years from 29 Oct 2024:
 | `demand` | 138,284 | Elexon INDO/ITSDO and NESO settled ND/TSD |
 | `carbon_intensity` | 38,457 | national actuals and forecasts |
 | `system_price` | 35,063 | imbalance prices |
+
+### Data quality
+
+```bash
+uv run tools/data-quality/report.py --output docs/results/data-quality.md
+```
+
+Checks coverage and gaps per series, duplicates, clock-change days, value ranges and agreement between sources,
+and computes the day-ahead benchmark ([ADR-0010](docs/adr/0010-day-ahead-benchmark.md)). The
+[latest report](docs/results/data-quality.md), on the two-year load: every half-hourly series 100% complete,
+0 duplicated records, all four clock-change days correct, and Elexon's initial demand within 0.23% of NESO's
+settled figure.
+
+**The number to beat in Phase 2:** NESO's day-ahead demand forecast, as published by 13:00 the day before, has
+a **MAPE of 2.74%** (MAE 685 MW) over 34,737 half-hours, against 8.45% for a seasonal-naive forecast.
 
 ## Data sources
 

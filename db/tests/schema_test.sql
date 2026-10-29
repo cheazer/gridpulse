@@ -114,8 +114,20 @@ INSERT INTO generation_mix VALUES
      NULL, now(), 'elexon-insights', 'fuelhh', 'GB', '1.0.0', 'MW', 'gas', 'OCGT', 35);
 
 DO $$
-DECLARE n int; d timestamptz; e double precision;
+DECLARE n int; d timestamptz; e double precision; materialised boolean;
 BEGIN
+    -- Real-time aggregation only reads raw rows above the materialisation watermark (ADR-0009). On a
+    -- database whose aggregates are already materialised past 2020 (e.g. after a backfill), these
+    -- uncommitted 2020 rows can't appear, so the check only runs where it can: on a fresh database, as in CI.
+    SELECT bool_or(_timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(mat_hypertable_id))
+                   > '2021-01-01')
+      INTO materialised
+      FROM _timescaledb_catalog.continuous_agg WHERE user_view_schema = 'grid';
+    IF materialised THEN
+        RAISE NOTICE 'SKIP  daily-aggregate checks: aggregates already materialised past 2020 (checked in CI)';
+        RETURN;
+    END IF;
+
     SELECT count(*), min(day) INTO n, d FROM demand_daily WHERE demand_type = 'INDO' AND day < '2021-01-01';
     IF n <> 1 OR d <> timestamptz '2020-10-25 00:00:00 Europe/London' THEN
         RAISE EXCEPTION 'demand_daily: expected both periods in one London day (2020-10-25), got % bucket(s) starting %', n, d;
@@ -130,6 +142,35 @@ BEGIN
     IF n <> 1 THEN RAISE EXCEPTION 'carbon_intensity_daily: expected the new actual to be visible in real time'; END IF;
 
     RAISE NOTICE 'PASS  daily aggregates use London days, sum gas across source codes, and include unrefreshed rows';
+END $$;
+
+-- ------------------------------------------------------------ benchmark views (V6, ADR-0010)
+-- Two NDF revisions for 27 Oct 2020 18:00: one published at 12:47 on the 26th (before the 13:00 cut-off),
+-- one at 15:00 (after it). The day-ahead view must pick the 12:47 one.
+INSERT INTO demand_forecast VALUES
+    (gen_random_uuid(), '2020-10-27T18:00:00Z', '2020-10-27T18:30:00Z', '2020-10-27', 37,
+     '2020-10-26T12:47:00Z', now(), 'elexon-insights', 'ndf', 'GB', '1.1.0', 'ND', 31000, 'NDF'),
+    (gen_random_uuid(), '2020-10-27T18:00:00Z', '2020-10-27T18:30:00Z', '2020-10-27', 37,
+     '2020-10-26T15:00:00Z', now(), 'elexon-insights', 'ndf', 'GB', '1.1.0', 'ND', 32000, 'NDF');
+-- The same half-hour measured twice: Elexon's initial outturn and NESO's settled figure.
+INSERT INTO demand VALUES
+    (gen_random_uuid(), '2020-10-27T18:00:00Z', '2020-10-27T18:30:00Z', '2020-10-27', 37,
+     NULL, now(), 'elexon-insights', 'indo', 'GB', '1.1.0', 'INDO', 31500),
+    (gen_random_uuid(), '2020-10-27T18:00:00Z', '2020-10-27T18:30:00Z', '2020-10-27', 37,
+     NULL, now(), 'neso-data-portal', 'nd', 'GB', '1.1.0', 'ND', 31400);
+
+DO $$
+DECLARE mw double precision; src text;
+BEGIN
+    SELECT forecast_mw INTO mw FROM ndf_day_ahead WHERE valid_from = '2020-10-27T18:00:00Z';
+    IF mw IS DISTINCT FROM 31000 THEN
+        RAISE EXCEPTION 'ndf_day_ahead: expected the 12:47 revision (31000), got %', mw;
+    END IF;
+    SELECT demand_mw, source INTO mw, src FROM national_demand_actual WHERE valid_from = '2020-10-27T18:00:00Z';
+    IF mw IS DISTINCT FROM 31400 OR src <> 'neso-data-portal' THEN
+        RAISE EXCEPTION 'national_demand_actual: expected NESO settled ND (31400), got % from %', mw, src;
+    END IF;
+    RAISE NOTICE 'PASS  day-ahead benchmark takes the last revision before 13:00 D-1; actuals prefer settled ND';
 END $$;
 
 -- ------------------------------------------------------------ least privilege

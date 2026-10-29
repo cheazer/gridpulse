@@ -16,3 +16,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0007](0007-elexon-demand-definitions-and-rate-limits.md) | Elexon data, demand definitions for benchmarking, and per-source rate limits | Accepted |
 | [0008](0008-weather-forecasts-and-reanalysis.md) | Weather: forecast revisions and reanalysis, kept apart | Accepted |
 | [0009](0009-backfill.md) | Backfill: chunked, resumable jobs through the live pipeline | Accepted |
+| [0010](0010-day-ahead-benchmark.md) | The day-ahead benchmark: NESO's NDF as published by 13:00 the day before | Accepted |
