@@ -7,6 +7,7 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -57,6 +58,12 @@ public final class FixtureServer implements AutoCloseable {
     return URI.create("http://127.0.0.1:" + server.getAddress().getPort() + basePath);
   }
 
+  /**
+   * Pseudo-status for {@link #failNext}: a 200 whose body is cut off part-way, like a dropped
+   * download.
+   */
+  public static final int TRUNCATED = -1;
+
   /** The next requests fail with these statuses, in order, before fixtures are served again. */
   public synchronized void failNext(int... statuses) {
     for (int status : statuses) {
@@ -103,7 +110,12 @@ public final class FixtureServer implements AutoCloseable {
                 .map(Map.Entry::getValue)
                 .findFirst()
                 .orElse(null);
-    if (failure != null) {
+    if (failure != null && failure == TRUNCATED) {
+      // Promise 1,000 bytes, send 10, then close: the client sees the connection drop mid-body.
+      exchange.getResponseHeaders().add("Content-Type", "application/json");
+      exchange.sendResponseHeaders(200, 1_000);
+      exchange.getResponseBody().write("{\"data\":[".getBytes(StandardCharsets.UTF_8));
+    } else if (failure != null) {
       exchange.sendResponseHeaders(failure, -1);
     } else if (resource == null) {
       exchange.sendResponseHeaders(400, -1);

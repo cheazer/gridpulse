@@ -24,7 +24,11 @@ public final class HttpSource {
     this.name = name;
     var requestFactory =
         new JdkClientHttpRequestFactory(
-            HttpClient.newBuilder().connectTimeout(settings.connectTimeout()).build());
+            HttpClient.newBuilder()
+                .connectTimeout(settings.connectTimeout())
+                // Follow redirects (NESO downloads go to object storage); never https->http.
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build());
     requestFactory.setReadTimeout(settings.readTimeout());
     this.http =
         builder

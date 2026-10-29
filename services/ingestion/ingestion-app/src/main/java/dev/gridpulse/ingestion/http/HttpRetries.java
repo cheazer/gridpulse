@@ -1,5 +1,6 @@
 package dev.gridpulse.ingestion.http;
 
+import java.io.IOException;
 import java.time.Duration;
 import org.springframework.core.retry.RetryPolicy;
 import org.springframework.core.retry.RetryTemplate;
@@ -36,6 +37,21 @@ public final class HttpRetries {
   static boolean isTransient(Throwable error) {
     return error instanceof ResourceAccessException
         || error instanceof HttpServerErrorException
-        || error instanceof HttpClientErrorException.TooManyRequests;
+        || error instanceof HttpClientErrorException.TooManyRequests
+        || causedByIo(error);
+  }
+
+  /**
+   * A connection dropped while the body was being read surfaces as a plain RestClientException
+   * (wrapping a parse error, wrapping the IOException), not a ResourceAccessException. Found when a
+   * large backfill download was cut off mid-response.
+   */
+  private static boolean causedByIo(Throwable error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+      if (cause instanceof IOException) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -54,6 +54,18 @@ not just backfills.
 - Regional carbon intensity isn't backfilled. The API only returns final forecasts for past periods, so there
   are no revisions or actuals, and the scheduler only needs regional forecasts going forward.
 
+**Weather and NESO history (step 1.8b).**
+- `open-meteo-reanalysis` (3-month chunks): what the weather actually was, `issued_at` null.
+- `open-meteo-day-ahead-forecasts` (1-month chunks): Open-Meteo's previous-runs API, `*_previous_day1` variables,
+  i.e. each hour as forecast by the model run about a day earlier. The API doesn't name the exact run, so
+  `issued_at` is the 6-hour bucket 24 hours before the hour. That's an approximation, but it's honest about what
+  was knowable, and it's what Phase 2 trains on (ADR-0008).
+- `neso-historic-demand` (one-year chunks over the yearly CSVs): settled ND and TSD (source `neso-data-portal`),
+  plus embedded solar and wind as a `generation_mix` event (series `embedded`), which FUELHH doesn't include. The
+  files differ by year: 2024 uses `01-JAN-2024` dates, 2025 and 2026 use ISO dates, and only 2026 has a
+  `FORECAST_ACTUAL_INDICATOR`. The parser accepts both date formats, treats a missing indicator as actual, and
+  skips rows marked as forecasts.
+
 **Running it:** `docker compose --profile backfill run --rm backfill` (two years by default; see the README).
 
 ## Consequences

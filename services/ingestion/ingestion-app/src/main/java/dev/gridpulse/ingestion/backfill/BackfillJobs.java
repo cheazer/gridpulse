@@ -1,14 +1,22 @@
 package dev.gridpulse.ingestion.backfill;
 
+import dev.gridpulse.events.GridEvent;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityClient;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityMapper;
 import dev.gridpulse.ingestion.elexon.ElexonClient;
 import dev.gridpulse.ingestion.elexon.ElexonClient.DayAheadProduct;
 import dev.gridpulse.ingestion.elexon.ElexonMapper;
+import dev.gridpulse.ingestion.neso.NesoClient;
+import dev.gridpulse.ingestion.neso.NesoMapper;
+import dev.gridpulse.ingestion.openmeteo.OpenMeteoClient;
+import dev.gridpulse.ingestion.openmeteo.OpenMeteoMapper;
+import dev.gridpulse.ingestion.openmeteo.OpenMeteoProperties;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -73,6 +81,54 @@ public class BackfillJobs {
                 client.dayAheadForecastsPublished(DayAheadProduct.NDF, from, to),
                 DayAheadProduct.NDF,
                 now));
+  }
+
+  @Bean
+  @Order(6)
+  BackfillJob openMeteoReanalysis(
+      OpenMeteoClient client, OpenMeteoMapper mapper, OpenMeteoProperties properties) {
+    // What the weather actually was. 3 months x 8 locations stays well inside Open-Meteo's limits.
+    return new ChunkedJob(
+        "open-meteo-reanalysis",
+        Period.ofMonths(3),
+        (from, to, now) ->
+            mapper.reanalysis(
+                properties.locations(),
+                client.reanalysis(properties.locations(), from, to.minusDays(1)),
+                now));
+  }
+
+  @Bean
+  @Order(7)
+  BackfillJob openMeteoDayAheadForecasts(
+      OpenMeteoClient client, OpenMeteoMapper mapper, OpenMeteoProperties properties) {
+    // What the forecast was a day ahead: the honest training features (ADR-0008).
+    return new ChunkedJob(
+        "open-meteo-day-ahead-forecasts",
+        Period.ofMonths(1),
+        (from, to, now) ->
+            mapper.dayAheadForecasts(
+                properties.locations(),
+                client.dayAheadForecasts(properties.locations(), from, to.minusDays(1)),
+                now));
+  }
+
+  @Bean
+  @Order(8)
+  BackfillJob nesoHistoricDemand(NesoClient client, NesoMapper mapper) {
+    // One CSV per year; a chunk downloads each year it touches and keeps its own dates.
+    return new ChunkedJob(
+        "neso-historic-demand",
+        Period.ofYears(1),
+        (from, to, now) -> {
+          List<GridEvent> events = new ArrayList<>();
+          for (int year = from.getYear(); year <= to.minusDays(1).getYear(); year++) {
+            client
+                .historicDemandCsv(year)
+                .ifPresent(csv -> events.addAll(mapper.historicDemand(csv, from, to, now)));
+          }
+          return events;
+        });
   }
 
   private static Instant utc(LocalDate date) {

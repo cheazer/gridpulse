@@ -40,6 +40,7 @@ gridpulse:
     open-meteo: # ADR-0008
       forecast-base-url: https://api.open-meteo.com/v1
       archive-base-url: https://archive-api.open-meteo.com/v1
+      previous-runs-base-url: https://previous-runs-api.open-meteo.com/v1 # archived forecasts, for backfill
       forecast-cron: "0 20 * * * *" # hourly; revisions are bucketed to 6 hours
       reanalysis-cron: "0 40 6 * * *" # daily; the archive lags real time by about a day
       poll-on-startup: true
@@ -57,7 +58,7 @@ gridpulse:
         - { id: aberdeen, latitude: 57.1497, longitude: -2.0943, region: north-scotland }
       http:
         connect-timeout: PT10S
-        read-timeout: PT30S
+        read-timeout: PT60S # history requests are large and slow to generate
         requests-per-second: 1 # published limit 600/min; each location counts as a call
         burst: 1
         retry:
@@ -77,6 +78,19 @@ gridpulse:
         retry:
           max-retries: 4
           initial-delay: PT1S
+          max-delay: PT30S
+
+    neso: # NESO Data Portal (CKAN), historic demand for the backfill (ADR-0009)
+      base-url: https://api.neso.energy
+      historic-demand-dataset: historic-demand-data
+      http:
+        connect-timeout: PT10S
+        read-timeout: PT60S # yearly CSVs are ~1.5 MB
+        requests-per-second: 0.5 # the portal's API asks for at most about 1 request a second
+        burst: 1
+        retry:
+          max-retries: 4
+          initial-delay: PT2S
           max-delay: PT30S
 
   backfill: # ADR-0009; run with the "backfill" profile
