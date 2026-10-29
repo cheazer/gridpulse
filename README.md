@@ -81,6 +81,23 @@ It works through each dataset in chunks sized to the source's limits, records a 
 and resumes where it stopped if interrupted. Narrow it with `-e GRIDPULSE_BACKFILL_JOBS=elexon-ndf` or
 `-e GRIDPULSE_BACKFILL_FROM=2025-01-01`.
 
+Measured on a 2-core Codespace (29 Oct 2026), two years from 29 Oct 2024:
+
+| | |
+|---|---|
+| Chunks / events | 1,678 chunks, 2.61 million events (0 dead-lettered) |
+| Time | about 9 minutes, plus a 69-second resume after two jobs were interrupted |
+| Stored | 3.3 million rows, 843 MB before compression |
+
+| Table | Rows | Notes |
+|---|---|---|
+| `demand_forecast` | 2,054,592 | every NESO NDF revision: the Phase 2 benchmark |
+| `generation_mix` | 769,436 | FUELHH by fuel code, plus NESO embedded solar and wind |
+| `weather` | 280,800 | 8 locations hourly: reanalysis and archived day-ahead forecasts |
+| `demand` | 138,284 | Elexon INDO/ITSDO and NESO settled ND/TSD |
+| `carbon_intensity` | 38,457 | national actuals and forecasts |
+| `system_price` | 35,063 | imbalance prices |
+
 ## Data sources
 
 | Source | Used for | Licence |
