@@ -71,6 +71,16 @@ class CarbonIntensityClientTest {
   }
 
   @Test
+  void retriesAResponseCutOffMidBody() {
+    // Regression: a download dropped mid-body surfaced as a non-retryable RestClientException and
+    // stopped a backfill job.
+    api.failNext(FixtureServer.TRUNCATED);
+
+    assertThat(client.national(POLLED_AT)).hasSize(96);
+    assertThat(api.requestCount()).isEqualTo(2);
+  }
+
+  @Test
   void doesNotRetryClientErrors() {
     api.failNext(400);
 
