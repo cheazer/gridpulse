@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import dev.gridpulse.ingestion.http.SourceUnavailableException;
 import dev.gridpulse.ingestion.testing.FixtureServer;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.HttpClientErrorException;
@@ -38,6 +39,17 @@ class CarbonIntensityClientTest {
     assertThat(api.requestedPaths())
         .containsExactly(
             "/intensity/2026-10-28T20:16Z/fw48h", "/regional/intensity/2026-10-28T20:16Z/fw48h");
+  }
+
+  @Test
+  void historyRequestsAFromToRange() {
+    assertThat(
+            client.national(
+                Instant.parse("2024-10-01T00:00:00Z"), Instant.parse("2024-10-31T00:00:00Z")))
+        .hasSize(96);
+
+    assertThat(api.requestedPaths())
+        .containsExactly("/intensity/2024-10-01T00:00Z/2024-10-31T00:00Z");
   }
 
   @Test

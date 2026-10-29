@@ -31,6 +31,12 @@ public class CarbonIntensityClient {
     return http.get(path("/intensity/%s/fw48h", from), NationalResponse.class).data();
   }
 
+  /** History: every national period from {@code from} to {@code to} (at most 31 days apart). */
+  public List<NationalPeriod> national(Instant from, Instant to) {
+    String path = "/intensity/%s/%s".formatted(API_TIME.format(from), API_TIME.format(to));
+    return http.get(path, NationalResponse.class).data();
+  }
+
   /** Regional forecasts for 48 hours from the period containing {@code from}. */
   public List<RegionalPeriod> regional(Instant from) {
     return http.get(path("/regional/intensity/%s/fw48h", from), RegionalResponse.class).data();

@@ -1,0 +1,20 @@
+# Backfill mode (ADR-0009): run the jobs once and exit, with the live pollers switched off.
+#   docker compose --profile backfill run --rm backfill
+# Override the window with GRIDPULSE_BACKFILL_FROM / GRIDPULSE_BACKFILL_TO (yyyy-MM-dd) or pick jobs
+# with GRIDPULSE_BACKFILL_JOBS (comma-separated names).
+spring:
+  main:
+    keep-alive: false # exit when the backfill finishes
+
+gridpulse:
+  sources:
+    carbon-intensity:
+      poll-on-startup: false
+      cron: "-"
+    elexon:
+      poll-on-startup: false
+      cron: "-"
+    open-meteo:
+      poll-on-startup: false
+      forecast-cron: "-"
+      reanalysis-cron: "-"

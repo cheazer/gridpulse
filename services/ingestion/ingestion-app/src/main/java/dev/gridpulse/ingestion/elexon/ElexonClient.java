@@ -64,4 +64,19 @@ public class ElexonClient {
   public List<DemandForecast> latestDayAheadForecast(DayAheadProduct product) {
     return http.get(product.path, DemandForecastResponse.class).data();
   }
+
+  /**
+   * History: every revision of the product published from {@code from} 00:00 UTC to {@code to}
+   * 00:00 UTC. Elexon allows at most one day per request.
+   */
+  public List<DemandForecast> dayAheadForecastsPublished(
+      DayAheadProduct product, LocalDate from, LocalDate to) {
+    String separator = product.path.contains("?") ? "&" : "?";
+    return http.get(
+            product.path
+                + separator
+                + "publishDateTimeFrom=%sT00:00Z&publishDateTimeTo=%sT00:00Z".formatted(from, to),
+            DemandForecastResponse.class)
+        .data();
+  }
 }
