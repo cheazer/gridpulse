@@ -9,6 +9,7 @@ import dev.gridpulse.events.SettlementPeriods;
 import dev.gridpulse.events.Source;
 import dev.gridpulse.events.payload.CarbonIntensity;
 import dev.gridpulse.events.payload.CarbonIntensity.IntensityIndex;
+import dev.gridpulse.ingestion.RevisionBuckets;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.NationalPeriod;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.RegionData;
 import dev.gridpulse.ingestion.carbonintensity.CarbonIntensityApi.RegionalPeriod;
@@ -72,7 +73,7 @@ public class CarbonIntensityMapper {
    * revisions. Periods in progress or awaiting their actual are skipped until a later poll.
    */
   public List<GridEvent> national(List<NationalPeriod> periods, Instant polledAt) {
-    Instant revision = revisionBucket(polledAt, nationalRevisionInterval);
+    Instant revision = RevisionBuckets.start(polledAt, nationalRevisionInterval);
     List<GridEvent> events = new ArrayList<>();
     for (NationalPeriod period : periods) {
       Instant from = parse(period.from());
@@ -103,7 +104,7 @@ public class CarbonIntensityMapper {
 
   /** Regional data is forecast-only: one revision per region for each period not yet started. */
   public List<GridEvent> regional(List<RegionalPeriod> periods, Instant polledAt) {
-    Instant revision = revisionBucket(polledAt, regionalRevisionInterval);
+    Instant revision = RevisionBuckets.start(polledAt, regionalRevisionInterval);
     List<GridEvent> events = new ArrayList<>();
     for (RegionalPeriod period : periods) {
       Instant from = parse(period.from());
@@ -136,16 +137,6 @@ public class CarbonIntensityMapper {
       }
     }
     return events;
-  }
-
-  /**
-   * The start of the revision bucket containing {@code polledAt}. Every poll inside one bucket
-   * gives a forecast the same {@code issued_at}, and so the same event ID: later polls update the
-   * stored revision instead of adding new rows.
-   */
-  static Instant revisionBucket(Instant polledAt, Duration interval) {
-    long seconds = polledAt.getEpochSecond();
-    return Instant.ofEpochSecond(seconds - Math.floorMod(seconds, interval.toSeconds()));
   }
 
   private static GridEvent event(

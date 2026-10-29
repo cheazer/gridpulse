@@ -33,6 +33,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
@@ -40,14 +41,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.redpanda.RedpandaContainer;
 
 /** The ingestion app's Elexon poller against a real Redpanda broker and recorded responses. */
-@SpringBootTest(
-    properties = {
-      // No start-up or scheduled polls during the test; it calls poll() itself.
-      "gridpulse.sources.carbon-intensity.poll-on-startup=false",
-      "gridpulse.sources.carbon-intensity.cron=-",
-      "gridpulse.sources.elexon.poll-on-startup=false",
-      "gridpulse.sources.elexon.cron=-"
-    })
+@SpringBootTest
+@ActiveProfiles("it") // no start-up or scheduled polls; tests call poll() themselves
 @Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ElexonPollerIT {

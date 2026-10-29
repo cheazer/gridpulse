@@ -9,6 +9,7 @@ import dev.gridpulse.events.EventValidator;
 import dev.gridpulse.events.GridEvent;
 import dev.gridpulse.events.Region;
 import dev.gridpulse.events.payload.CarbonIntensity;
+import dev.gridpulse.ingestion.RevisionBuckets;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
@@ -107,9 +108,9 @@ class CarbonIntensityMapperTest {
 
   @Test
   void revisionBucketsAlignToTheInterval() {
-    assertThat(CarbonIntensityMapper.revisionBucket(POLLED_AT, Duration.ofMinutes(30)))
+    assertThat(RevisionBuckets.start(POLLED_AT, Duration.ofMinutes(30)))
         .isEqualTo(Instant.parse("2026-10-28T20:00:00Z"));
-    assertThat(CarbonIntensityMapper.revisionBucket(POLLED_AT, Duration.ofHours(3)))
+    assertThat(RevisionBuckets.start(POLLED_AT, Duration.ofHours(3)))
         .isEqualTo(Instant.parse("2026-10-28T18:00:00Z"));
   }
 

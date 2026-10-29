@@ -1,0 +1,13 @@
+# Profile for integration tests: no start-up or scheduled polls; each test calls poll() itself.
+gridpulse:
+  sources:
+    carbon-intensity:
+      poll-on-startup: false
+      cron: "-"
+    elexon:
+      poll-on-startup: false
+      cron: "-"
+    open-meteo:
+      poll-on-startup: false
+      forecast-cron: "-"
+      reanalysis-cron: "-"
