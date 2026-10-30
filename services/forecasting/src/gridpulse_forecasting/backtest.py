@@ -81,7 +81,11 @@ def run_backtest(
         folds.append(
             pd.concat(
                 [
-                    test[["target_time", "issue_time"]].assign(fold=str(month), actual=test["target"]),
+                    # Seasonal naive: the target a week earlier at the same UK clock time, already a feature of
+                    # each example. Taken row by row: a rolling dataset forecasts each half-hour several times.
+                    test[["target_time", "issue_time"]].assign(
+                        fold=str(month), actual=test["target"], **{NAIVE: test[naive_feature]}
+                    ),
                     forecast,
                 ],
                 axis=1,
@@ -91,9 +95,6 @@ def run_backtest(
         raise ValueError(f"no complete months with known targets to test on (asked for {months})")
     predictions = pd.concat(folds, ignore_index=True)
     predictions[NESO] = neso.reindex(predictions["target_time"]).to_numpy()
-    # Seasonal naive: the target a week earlier at the same UK clock time, already a feature of every example.
-    seasonal_naive = examples.set_index("target_time")[naive_feature]
-    predictions[NAIVE] = seasonal_naive.reindex(predictions["target_time"]).to_numpy()
     return BacktestResult(predictions, *score(predictions), final_model=model)
 
 

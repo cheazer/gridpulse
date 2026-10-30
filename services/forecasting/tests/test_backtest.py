@@ -139,3 +139,19 @@ def test_the_naive_benchmark_comes_from_the_tasks_own_lag() -> None:
     result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=1, naive_feature="carbon_lag_7d")
 
     assert (result.predictions["seasonal_naive"] == 123.0).all()
+
+
+def test_rolling_examples_forecast_each_half_hour_several_times() -> None:
+    # Two issue times covering the same half-hours, as rolling examples do.
+    first = examples()
+    second = first.assign(
+        issue_time=first["issue_time"] - pd.Timedelta(hours=6), demand_lag_7d=first["demand_lag_7d"] + 1
+    )
+    both = pd.concat([first, second], ignore_index=True)
+
+    result = run_backtest(Spy, both, both.drop_duplicates("target_time").set_index("target_time")["target"], months=1)
+
+    march = result.predictions
+    assert march["target_time"].duplicated().any()
+    # Each row keeps its own naive value rather than one looked up by half-hour.
+    assert sorted(march.groupby("target_time")["seasonal_naive"].nunique().unique()) == [2]
