@@ -46,6 +46,9 @@ def log_backtest(result: BacktestResult, model: Forecaster) -> str | None:
         )
         mlflow.log_text(result.summary.to_csv(), "summary.csv")
         mlflow.log_text(result.by_month.to_csv(), "mape_by_month.csv")
+        importance = getattr(result.final_model, "feature_importance", None)
+        if importance is not None:
+            mlflow.log_text(importance().rename("gain_share").to_csv(), "feature_importance.csv")
         return str(run.info.run_id)
 
 
