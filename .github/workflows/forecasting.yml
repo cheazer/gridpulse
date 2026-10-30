@@ -3,9 +3,9 @@ name: forecasting
 on:
   push:
     branches: [main]
-    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/infra.yaml", ".github/workflows/forecasting.yml"]
+    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/**", ".github/workflows/forecasting.yml"]
   pull_request:
-    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/infra.yaml", ".github/workflows/forecasting.yml"]
+    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/**", ".github/workflows/forecasting.yml"]
 
 permissions:
   contents: read
@@ -34,3 +34,30 @@ jobs:
         run: uv run mypy
       - name: Unit and integration tests (Testcontainers)
         run: uv run pytest
+
+  # The image the API and job run from, started through Compose against a freshly migrated database.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create .env with throwaway passwords
+        run: |
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+      - name: Build and start the API (and the database, migrations and logins it depends on)
+        env:
+          GRIDPULSE_VERSION: ${{ github.sha }}
+        run: docker compose up -d --build --wait forecasting-api
+      - name: Smoke test
+        run: |
+          curl -sf http://localhost:8000/health
+          curl -sf http://localhost:8000/ready
+          # A fresh database holds no forecasts: an empty, stale answer, not an error.
+          curl -sf http://localhost:8000/v1/forecasts/demand | tee /tmp/demand.json
+          python3 -c "import json; b = json.load(open('/tmp/demand.json')); assert b['half_hours'] == [] and b['stale']"
+          # The job's entry point is in the same image.
+          docker compose --profile jobs run --rm forecast-job python -m gridpulse_forecasting forecast --help
+      - name: Runs as a non-root user
+        run: test "$(docker compose exec -T forecasting-api id -u)" = "10001"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs forecasting-api db-users migrate
