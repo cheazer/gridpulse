@@ -7,7 +7,9 @@ pipx install uv
 # Local-only .env with random database passwords; never committed (.gitignore).
 if [[ ! -f .env ]]; then
   random() { python3 -c 'import secrets; print(secrets.token_urlsafe(18))'; }
-  sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(random)/"       -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(random)/" .env.example > .env
+  sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(random)/" \
+      -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(random)/" \
+      -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(random)/" .env.example > .env
   echo "Created .env with random database passwords"
 fi
 

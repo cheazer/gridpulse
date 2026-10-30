@@ -82,3 +82,19 @@ def load_targets(db: Database, start: dt.datetime, end: dt.datetime) -> pd.Serie
         {"start": start, "end": end},
     )
     return frame.set_index("valid_from")["demand_mw"].astype("float64")
+
+
+def load_neso_day_ahead(db: Database, start: dt.datetime, end: dt.datetime) -> pd.Series:
+    """NESO's day-ahead demand forecast as published by 13:00 UK on D-1 (ADR-0010), indexed by ``valid_from``.
+
+    The benchmark only: never a model input (ADR-0011).
+    """
+    frame = db.read_frame(
+        """
+        SELECT valid_from, forecast_mw FROM ndf_day_ahead
+         WHERE valid_from >= %(start)s AND valid_from < %(end)s
+         ORDER BY valid_from
+        """,
+        {"start": start, "end": end},
+    )
+    return frame.set_index("valid_from")["forecast_mw"].astype("float64")

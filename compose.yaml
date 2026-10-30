@@ -7,3 +7,4 @@ name: gridpulse
 include:
   - deploy/compose/infra.yaml
   - deploy/compose/apps.yaml
+  - deploy/compose/ml.yaml

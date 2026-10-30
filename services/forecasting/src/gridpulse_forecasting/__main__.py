@@ -2,6 +2,9 @@
 
 uv run --env-file ../../.env python -m gridpulse_forecasting check-db
 uv run --env-file ../../.env python -m gridpulse_forecasting build-dataset --from 2025-01-01 --to 2025-12-31
+uv run --env-file ../../.env python -m gridpulse_forecasting backtest --model seasonal-naive
+
+Set MLFLOW_TRACKING_URI (e.g. http://localhost:5000) to record backtests in MLflow.
 """
 
 from __future__ import annotations
@@ -9,12 +12,23 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import sys
+from collections.abc import Callable
 
+import pandas as pd
+
+from gridpulse_forecasting.backtest import run_backtest
 from gridpulse_forecasting.config import DatabaseSettings
 from gridpulse_forecasting.dataset import build_day_ahead
 from gridpulse_forecasting.db import Database
-from gridpulse_forecasting.features import FEATURES, LAG_DAYS
-from gridpulse_forecasting.sources import load_sources, load_targets
+from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON
+from gridpulse_forecasting.models import Forecaster, SeasonalNaive
+from gridpulse_forecasting.sources import load_neso_day_ahead, load_sources, load_targets
+from gridpulse_forecasting.tracking import log_backtest
+
+# The first day with two weeks of history behind it, for the 14-day lag.
+FIRST_DAY = dt.date(2024, 11, 13)
+
+MODELS: dict[str, Callable[[], Forecaster]] = {"seasonal-naive": SeasonalNaive}
 
 # The two series every Phase 2 backtest joins on (ADR-0010).
 CHECK_QUERY = """
@@ -33,25 +47,51 @@ def check_db() -> int:
     return 0
 
 
-def build_dataset(first: dt.date, last: dt.date, output: str | None) -> int:
-    """Build day-ahead examples for UK days first..last and report how complete each feature is."""
-    db = Database(DatabaseSettings())
-    # Inputs reach back as far as the longest lag; a UTC day either side covers the UK-day boundaries.
+def input_window(first: dt.date, last: dt.date) -> tuple[dt.datetime, dt.datetime]:
+    """UTC range to load for UK days first..last: back as far as the longest lag, a day either side for UK days."""
     start = dt.datetime.combine(first - dt.timedelta(days=max(LAG_DAYS) + 1), dt.time(), dt.UTC)
     end = dt.datetime.combine(last + dt.timedelta(days=2), dt.time(), dt.UTC)
+    return start, end
+
+
+def load_examples(db: Database, first: dt.date, last: dt.date) -> pd.DataFrame:
+    start, end = input_window(first, last)
     days = [first + dt.timedelta(days=n) for n in range((last - first).days + 1)]
+    return build_day_ahead(load_sources(db, start, end), load_targets(db, start, end), days)
 
-    examples = build_day_ahead(load_sources(db, start, end), load_targets(db, start, end), days)
 
-    print(
-        f"{len(examples):,} examples over {len(days)} days; target known for {examples['target_mw'].notna().mean():.1%}"
-    )
+def build_dataset(first: dt.date, last: dt.date, output: str | None) -> int:
+    """Build day-ahead examples for UK days first..last and report how complete each feature is."""
+    examples = load_examples(Database(DatabaseSettings()), first, last)
+    days = examples["issue_time"].nunique()
+    print(f"{len(examples):,} examples over {days} days; target known for {examples['target_mw'].notna().mean():.1%}")
     missing = examples[FEATURES].isna().mean().sort_values(ascending=False)
     print("Missing values per feature:")
     print(missing[missing > 0].map("{:.1%}".format).to_string() if (missing > 0).any() else "  none")
     if output:
         examples.to_parquet(output, index=False)
         print(f"Wrote {output}")
+    return 0
+
+
+def backtest(model_name: str, months: int, first: dt.date, last: dt.date) -> int:
+    """Rolling-origin backtest of one model against NESO and seasonal naive; logs to MLflow if configured."""
+    db = Database(DatabaseSettings())
+    examples = load_examples(db, first, last)
+    neso = load_neso_day_ahead(db, *input_window(first, last))
+    new_model = MODELS[model_name]
+
+    result = run_backtest(new_model, examples, neso, months)
+
+    pd.set_option("display.width", 160)
+    print(f"Backtest of {model_name}: {result.predictions['fold'].iloc[0]} to {result.predictions['fold'].iloc[-1]}")
+    print(result.summary.round(2).to_string())
+    print()
+    print("MAPE % by month:")
+    print(result.by_month.round(2).to_string())
+    run_id = log_backtest(result, new_model())
+    print()
+    print(f"MLflow run {run_id}" if run_id else "MLFLOW_TRACKING_URI not set: not logged")
     return 0
 
 
@@ -63,11 +103,19 @@ def main(argv: list[str] | None = None) -> int:
     build.add_argument("--from", dest="first", type=dt.date.fromisoformat, required=True, help="first UK day")
     build.add_argument("--to", dest="last", type=dt.date.fromisoformat, required=True, help="last UK day")
     build.add_argument("--output", help="write the examples to this Parquet file")
+    test = commands.add_parser("backtest", help="rolling-origin backtest against NESO and seasonal naive")
+    test.add_argument("--model", choices=sorted(MODELS), required=True)
+    test.add_argument("--months", type=int, default=12, help="test months, the most recent complete ones")
+    test.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first UK day")
+    test.add_argument("--to", dest="last", type=dt.date.fromisoformat, help="last UK day (default: yesterday)")
     args = parser.parse_args(argv)
     if args.command == "check-db":
         return check_db()
     if args.command == "build-dataset":
         return build_dataset(args.first, args.last, args.output)
+    if args.command == "backtest":
+        yesterday = pd.Timestamp.now(tz=LONDON).date() - dt.timedelta(days=1)
+        return backtest(args.model, args.months, args.first, args.last or yesterday)
     parser.error(f"unknown command {args.command}")
     return 2
 

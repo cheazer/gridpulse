@@ -19,7 +19,8 @@ docker compose exec -T timescaledb \
 echo "--- login users (twice: must be idempotent)"
 docker compose run --rm db-users
 docker compose run --rm db-users
-docker compose exec -T -e PGPASSWORD="$FORECAST_DB_PASSWORD" timescaledb   psql -X -q -h localhost -U forecasting -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
+docker compose exec -T -e PGPASSWORD="$FORECAST_DB_PASSWORD" timescaledb \
+  psql -X -q -h localhost -U forecasting -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
 SELECT count(*) FROM grid.national_demand_actual;
 DO $$
 BEGIN
@@ -29,4 +30,15 @@ EXCEPTION WHEN insufficient_privilege THEN
     RAISE NOTICE 'PASS  forecasting logs in with its own password, reads, and cannot write';
 END $$;
 SQL
+docker compose exec -T -e PGPASSWORD="$MLFLOW_DB_PASSWORD" timescaledb \
+  psql -X -q -h localhost -U mlflow -d mlflow -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE ownership_check (id int);  -- mlflow owns its database, so it can create its schema
+DROP TABLE ownership_check;
+SELECT 'PASS  mlflow logs in to its own database and owns it' AS result;
+SQL
+if docker compose exec -T -e PGPASSWORD="$MLFLOW_DB_PASSWORD" timescaledb \
+     psql -X -q -h localhost -U mlflow -d "$POSTGRES_DB" -c "SELECT 1 FROM grid.demand LIMIT 1" 2>/dev/null; then
+  echo "FAIL  mlflow can read grid data"; exit 1
+fi
+echo "PASS  mlflow cannot read grid data"
 echo "db tests passed"
