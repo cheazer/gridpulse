@@ -68,7 +68,14 @@ REGIONAL_SOLAR = [f"solar_radiation_{location}_wm2" for location in POPULATION_W
 WEEK_ON_WEEK = ["demand_change_24h_pct", "temperature_change_7d_c", "solar_radiation_change_7d_wm2"]
 
 # Everything the dataset builds; each model chooses its subset (models.ModelConfig).
-FEATURES = [*BASE_FEATURES, *REGIONAL_SOLAR, *WEEK_ON_WEEK]
+# Carbon intensity's own recent past, for the carbon model (step 2.5).
+CARBON_HISTORY = [*(f"carbon_lag_{days}d" for days in LAG_DAYS), "carbon_latest", "carbon_mean_24h"]
+
+# The carbon model's inputs: the demand model's (calendar, demand, weather: demand and wind drive which plants run)
+# plus carbon intensity's own history. One configuration, set before its backtest and not tuned on it.
+CARBON_FEATURES = [*BASE_FEATURES, *CARBON_HISTORY]
+
+FEATURES = [*BASE_FEATURES, *REGIONAL_SOLAR, *WEEK_ON_WEEK, *CARBON_HISTORY]
 
 
 def build_features(snapshot: Sources, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
@@ -77,6 +84,7 @@ def build_features(snapshot: Sources, issue_time: pd.Timestamp, targets: pd.Date
     frame["lead_hours"] = (targets - issue_time) / pd.Timedelta(hours=1)
     frame = frame.join(calendar_features(targets))
     frame = frame.join(demand_features(snapshot.indo, issue_time, targets))
+    frame = frame.join(carbon_features(snapshot.carbon, issue_time, targets))
     frame = frame.join(weather_features(snapshot.weather, targets))
     # Last week's weather as the snapshot last saw it: for past hours that's the final forecast for them.
     last_week = weather_features(snapshot.weather, same_wall_time(targets, 7))
@@ -115,14 +123,28 @@ def _bank_holidays(year: int) -> holidays.HolidayBase:
     return holidays.country_holidays("GB", subdiv="ENG", years=year)
 
 
-def demand_features(indo: pd.DataFrame, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
-    demand = indo.set_index("valid_from")["demand_mw"]
+def history_features(
+    series: pd.Series, prefix: str, issue_time: pd.Timestamp, targets: pd.DatetimeIndex
+) -> pd.DataFrame:
+    """A half-hourly series' recent past: the same UK clock time 2, 7 and 14 days earlier, the latest published
+    value, and the mean of the last 24 hours, as ``{prefix}_lag_7d`` and so on."""
     frame = pd.DataFrame(index=targets)
     for days in LAG_DAYS:
-        frame[f"demand_lag_{days}d"] = demand.reindex(same_wall_time(targets, days)).to_numpy()
+        frame[f"{prefix}_lag_{days}d"] = series.reindex(same_wall_time(targets, days)).to_numpy()
+    recent = series[series.index >= issue_time - pd.Timedelta(hours=24)]
+    frame[f"{prefix}_latest"] = series.iloc[-1] if len(series) else np.nan
+    frame[f"{prefix}_mean_24h"] = recent.mean() if len(recent) else np.nan
+    return frame
+
+
+def carbon_features(carbon: pd.DataFrame, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
+    return history_features(carbon.set_index("valid_from")["carbon_gco2_per_kwh"], "carbon", issue_time, targets)
+
+
+def demand_features(indo: pd.DataFrame, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
+    demand = indo.set_index("valid_from")["demand_mw"]
+    frame = history_features(demand, "demand", issue_time, targets)
     recent = demand[demand.index >= issue_time - pd.Timedelta(hours=24)]
-    frame["demand_latest"] = demand.iloc[-1] if len(demand) else np.nan
-    frame["demand_mean_24h"] = recent.mean() if len(recent) else np.nan
     # The same half-hours a week earlier (the same instants: a day-length difference doesn't matter for a mean).
     week_before = demand.reindex(pd.DatetimeIndex(recent.index) - pd.Timedelta(days=7)).to_numpy()
     paired = ~np.isnan(week_before)

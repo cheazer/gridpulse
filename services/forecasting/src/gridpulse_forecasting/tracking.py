@@ -13,10 +13,14 @@ from gridpulse_forecasting.backtest import BacktestResult
 from gridpulse_forecasting.features import FEATURES
 from gridpulse_forecasting.models import Forecaster
 
-EXPERIMENT = "day-ahead-demand"
 
-
-def log_backtest(result: BacktestResult, model: Forecaster, name: str | None = None, stage: str = "test") -> str | None:
+def log_backtest(
+    result: BacktestResult,
+    model: Forecaster,
+    experiment: str,
+    name: str | None = None,
+    stage: str = "test",
+) -> str | None:
     """Log parameters, metrics for the model and both benchmarks, and the result tables. Returns the run id.
 
     ``stage`` is "validation" for runs that choose between designs and "test" for the final score, so the two can
@@ -26,7 +30,7 @@ def log_backtest(result: BacktestResult, model: Forecaster, name: str | None = N
         return None
     import mlflow  # imported lazily: only runs that log need it
 
-    mlflow.set_experiment(EXPERIMENT)
+    mlflow.set_experiment(experiment)
     folds = sorted(result.predictions["fold"].unique())
     run_name = name or model.name
     with mlflow.start_run(run_name=f"{run_name} ({stage})") as run:

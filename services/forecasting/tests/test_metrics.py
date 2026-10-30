@@ -8,10 +8,10 @@ def test_point_metrics_on_known_errors() -> None:
     # Errors of +100 and -300 MW on actuals of 1,000 and 3,000 MW.
     metrics = point_metrics(actual=[1_000, 3_000], forecast=[1_100, 2_700])
 
-    assert metrics["mae_mw"] == pytest.approx(200)
-    assert metrics["rmse_mw"] == pytest.approx(np.sqrt((100**2 + 300**2) / 2))
+    assert metrics["mae"] == pytest.approx(200)
+    assert metrics["rmse"] == pytest.approx(np.sqrt((100**2 + 300**2) / 2))
     assert metrics["mape_pct"] == pytest.approx(10)  # 10% and 10%
-    assert metrics["bias_mw"] == pytest.approx(-100)  # too low on average
+    assert metrics["bias"] == pytest.approx(-100)  # too low on average
 
 
 def test_pinball_loss_charges_misses_by_quantile() -> None:

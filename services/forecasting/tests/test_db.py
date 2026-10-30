@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pandas as pd
 import psycopg
 import pytest
@@ -7,6 +9,7 @@ from pydantic import SecretStr
 
 from gridpulse_forecasting.config import DatabaseSettings
 from gridpulse_forecasting.db import Database
+from gridpulse_forecasting.sources import load_carbon_actuals, load_neso_carbon_final
 
 pytestmark = pytest.mark.integration
 
@@ -68,3 +71,27 @@ def test_wrong_password_is_rejected(reader_settings: DatabaseSettings) -> None:
 
     with pytest.raises(psycopg.OperationalError):
         Database(wrong).connect()
+
+
+def test_carbon_loaders_treat_a_zero_actual_as_missing(admin_conninfo: str, reader_settings: DatabaseSettings) -> None:
+    with psycopg.connect(admin_conninfo, autocommit=True) as conn:
+        conn.execute(
+            """
+            INSERT INTO grid.carbon_intensity VALUES
+                (gen_random_uuid(), '2025-06-02T11:00:00Z', '2025-06-02T11:30:00Z', '2025-06-02', 25, NULL, now(),
+                 'neso-carbon-intensity', 'intensity', 'GB', '1.0.0', 120, 118, 'moderate'),
+                (gen_random_uuid(), '2025-06-02T11:30:00Z', '2025-06-02T12:00:00Z', '2025-06-02', 26, NULL, now(),
+                 'neso-carbon-intensity', 'intensity', 'GB', '1.0.0', 62, 0, 'low'),
+                (gen_random_uuid(), '2025-06-02T11:00:00Z', '2025-06-02T11:30:00Z', '2025-06-02', 25, NULL, now(),
+                 'neso-carbon-intensity', 'intensity', 'london', '1.0.0', 90, 95, 'low')
+            ON CONFLICT DO NOTHING
+            """
+        )
+    db = Database(reader_settings)
+    start, end = dt.datetime(2025, 6, 2, tzinfo=dt.UTC), dt.datetime(2025, 6, 3, tzinfo=dt.UTC)
+
+    actuals = load_carbon_actuals(db, start, end)
+    benchmark = load_neso_carbon_final(db, start, end)
+
+    assert actuals.to_dict() == {pd.Timestamp("2025-06-02T11:00Z"): 118.0}  # national only, the zero dropped
+    assert len(benchmark) == 2  # the forecast is still NESO's forecast, even where the actual was bad

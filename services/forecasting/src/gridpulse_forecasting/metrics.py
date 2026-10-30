@@ -13,10 +13,10 @@ def point_metrics(actual: Values, forecast: Values) -> dict[str, float]:
     a, f = _floats(actual), _floats(forecast)
     error = f - a
     return {
-        "mae_mw": float(np.mean(np.abs(error))),
-        "rmse_mw": float(np.sqrt(np.mean(error**2))),
+        "mae": float(np.mean(np.abs(error))),
+        "rmse": float(np.sqrt(np.mean(error**2))),
         "mape_pct": float(np.mean(np.abs(error) / np.abs(a)) * 100),
-        "bias_mw": float(np.mean(error)),
+        "bias": float(np.mean(error)),
     }
 
 

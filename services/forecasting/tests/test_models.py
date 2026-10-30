@@ -36,8 +36,8 @@ def fitted() -> LightGBMQuantiles:
 def test_learns_the_signal_far_better_than_seasonal_naive(fitted: LightGBMQuantiles) -> None:
     features, actual = synthetic(4_000, seed=2)
 
-    model_mae = point_metrics(actual, fitted.predict(features)["p50"])["mae_mw"]
-    naive_mae = point_metrics(actual, SeasonalNaive().predict(features)["p50"])["mae_mw"]
+    model_mae = point_metrics(actual, fitted.predict(features)["p50"])["mae"]
+    naive_mae = point_metrics(actual, SeasonalNaive().predict(features)["p50"])["mae"]
 
     assert model_mae < 500  # the noise alone gives an MAE of about 320 MW
     assert model_mae < naive_mae / 2
@@ -59,7 +59,7 @@ def test_conformalised_intervals_cover_about_80_percent_of_unseen_actuals() -> N
 
     forecast = model.predict(features)
 
-    assert model.margin_mw is not None and model.margin_mw > 0  # it had to widen the band
+    assert model.margin is not None and model.margin > 0  # it had to widen the band
     assert interval_coverage(actual, forecast["p10"], forecast["p90"]) == pytest.approx(0.8, abs=0.03)
     assert (forecast["p10"] <= forecast["p50"]).all() and (forecast["p50"] <= forecast["p90"]).all()
 

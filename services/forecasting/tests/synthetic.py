@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from gridpulse_forecasting.features import POPULATION_WEIGHTS
-from gridpulse_forecasting.sources import INDO_PUBLICATION_LAG, WEATHER_COLUMNS, Sources
+from gridpulse_forecasting.sources import CARBON_PUBLICATION_LAG, INDO_PUBLICATION_LAG, WEATHER_COLUMNS, Sources
 
 # Hours before the forecast hour at which each synthetic weather revision is issued (6-hour buckets, as stored).
 REVISION_LEADS = (24, 48)
@@ -40,7 +40,16 @@ def sources(start: str = "2025-03-01", end: str = "2025-04-15") -> Sources:
     weather = pd.concat(rows, ignore_index=True)
     weather["available_at"] = weather["issued_at"]
     assert set(WEATHER_COLUMNS) <= set(weather.columns)
-    return Sources(indo=indo, weather=weather)
+
+    # Carbon intensity: 100 g/kWh plus the half-hour's index modulo 100, so lags are recognisable too.
+    carbon = pd.DataFrame(
+        {
+            "valid_from": periods,
+            "carbon_gco2_per_kwh": 100.0 + np.arange(len(periods)) % 100,
+            "available_at": periods + pd.Timedelta(minutes=30) + CARBON_PUBLICATION_LAG,
+        }
+    )
+    return Sources(indo=indo, weather=weather, carbon=carbon)
 
 
 def targets(source: Sources) -> pd.Series:
@@ -56,4 +65,6 @@ def scramble_after(source: Sources, t: pd.Timestamp) -> Sources:
     later = weather["available_at"] > t
     for column in WEATHER_COLUMNS:
         weather.loc[later, column] = 999.0
-    return Sources(indo=indo, weather=weather)
+    carbon = source.carbon.copy()
+    carbon.loc[carbon["available_at"] > t, "carbon_gco2_per_kwh"] = -1.0
+    return Sources(indo=indo, weather=weather, carbon=carbon)
