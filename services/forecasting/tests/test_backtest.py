@@ -155,3 +155,11 @@ def test_rolling_examples_forecast_each_half_hour_several_times() -> None:
     assert march["target_time"].duplicated().any()
     # Each row keeps its own naive value rather than one looked up by half-hour.
     assert sorted(march.groupby("target_time")["seasonal_naive"].nunique().unique()) == [2]
+
+
+def test_a_month_is_complete_by_its_half_hours_not_its_rows() -> None:
+    # Data to 10 April, each half-hour forecast eight times: April has plenty of rows but only 10 days.
+    frame = examples()
+    many = pd.concat([frame] * 8, ignore_index=True)
+
+    assert [str(m) for m in backtest_months(many, 1)] == ["2025-03"]

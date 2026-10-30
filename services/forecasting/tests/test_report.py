@@ -62,5 +62,6 @@ def test_rolling_report_breaks_accuracy_down_by_lead_time() -> None:
 
     assert "## MAPE by lead time" in report
     assert "every 6 hours" in report
-    # Day-ahead synthetic examples have leads of 11 to 35 hours.
-    assert "| 12-24 h |" in report and "| 0-6 h |" not in report
+    # Day-ahead synthetic examples have leads of 11 to 35 hours, listed in lead order, not alphabetically.
+    assert "| 0-6 h |" not in report
+    assert report.index("| 6-12 h |") < report.index("| 12-24 h |") < report.index("| 24-36 h |")

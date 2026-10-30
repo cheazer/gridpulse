@@ -120,7 +120,7 @@ def accuracy_report(
             "How far ahead the forecast was issued. NESO's forecast is the same whatever the lead (its 13:00 day-ahead "
             "or final forecast), so only GridPulse's column should change down the table.",
             "",
-            grouped(common, bucket.astype(str), "Lead", labels, by_mae, cell),
+            grouped(common, bucket, "Lead", labels, by_mae, cell),
         ]
 
     importance = getattr(result.final_model, "feature_importance", None)
@@ -152,7 +152,8 @@ def grouped(
             for name, column in POINT.items()
         }
     )
-    means = errors.groupby(key).mean()
+    # observed=True: a categorical key (lead buckets) keeps its own order and skips empty buckets.
+    means = errors.groupby(key, observed=True).mean()
     return table(
         [heading, *(labels[c] for c in means.columns)],
         [[str(group), *(cell(v) for v in row)] for group, row in means.iterrows()],

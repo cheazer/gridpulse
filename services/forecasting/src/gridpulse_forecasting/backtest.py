@@ -38,12 +38,15 @@ class BacktestResult:
 
 def backtest_months(examples: pd.DataFrame, months: int) -> list[pd.Period]:
     """The last ``months`` complete UK months with known targets."""
-    rows_per_month = uk_month(examples.loc[examples["target"].notna(), "target_time"]).value_counts()
+    # Distinct half-hours, not rows: a rolling dataset forecasts each half-hour several times, so counting rows would
+    # call a half-finished month complete.
+    known = examples.loc[examples["target"].notna(), "target_time"].drop_duplicates()
+    per_month = uk_month(known).value_counts()
     # Complete means at least 46 half-hours (the shortest UK day) for every day of the month.
     complete = [
         month
-        for month, rows in zip(map(pd.Period, rows_per_month.index), rows_per_month, strict=True)
-        if rows >= month.days_in_month * 46
+        for month, half_hours in zip(map(pd.Period, per_month.index), per_month, strict=True)
+        if half_hours >= month.days_in_month * 46
     ]
     return sorted(complete)[-months:]
 
