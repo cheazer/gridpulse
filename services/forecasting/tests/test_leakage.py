@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 import synthetic
 
-from gridpulse_forecasting.dataset import build_day_ahead, day_ahead_issue_time
+from gridpulse_forecasting.dataset import build_day_ahead, build_rolling, day_ahead_issue_time
 from gridpulse_forecasting.features import FEATURES
 
 # An ordinary day, the spring clock change (46 periods) and a day straddling it for the 7-day lag.
@@ -53,3 +53,19 @@ def test_targets_are_labels_not_inputs() -> None:
 
     pd.testing.assert_frame_equal(honest[FEATURES], shifted[FEATURES])
     assert (shifted["target"] - honest["target"] == 1_000).all()
+
+
+# Rolling issue times, including the shortest leads: a forecast for the very next half-hour.
+ROLLING_ISSUES = ["2025-03-19T07:00Z", "2025-03-29T19:00Z", "2025-04-02T00:30Z"]
+
+
+@pytest.mark.parametrize("issue", ROLLING_ISSUES)
+def test_rolling_features_ignore_everything_published_after_the_issue_time(issue: str) -> None:
+    source = synthetic.sources()
+    targets = synthetic.targets(source)
+    t = pd.Timestamp(issue)
+
+    honest = build_rolling(source, targets, [t])
+    scrambled = build_rolling(synthetic.scramble_after(source, t), targets, [t])
+
+    pd.testing.assert_frame_equal(honest[FEATURES], scrambled[FEATURES])

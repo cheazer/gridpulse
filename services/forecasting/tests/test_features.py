@@ -7,7 +7,14 @@ import pandas as pd
 import pytest
 import synthetic
 
-from gridpulse_forecasting.dataset import build_day_ahead, day_ahead_issue_time, london_day
+from gridpulse_forecasting.dataset import (
+    build_day_ahead,
+    build_rolling,
+    day_ahead_issue_time,
+    london_day,
+    rolling_issue_times,
+    rolling_targets,
+)
 from gridpulse_forecasting.features import FEATURES, build_features, calendar_features, same_wall_time
 
 GMT_DAY = dt.date(2025, 3, 20)  # issue time 2025-03-19 13:00Z
@@ -193,3 +200,37 @@ def test_carbon_history_uses_the_same_lag_rules_as_demand(examples: pd.DataFrame
     assert row["carbon_lag_2d"] == carbon[pd.Timestamp("2025-03-18T18:00Z")]
     # Published an hour after the half-hour ends, like INDO: 11:30-12:00 is the last one out by 13:00.
     assert row["carbon_latest"] == carbon[pd.Timestamp("2025-03-19T11:30Z")]
+
+
+# ------------------------------------------------------------------ rolling examples
+
+
+def test_rolling_targets_are_the_next_96_half_hours_from_the_issue_time() -> None:
+    targets = rolling_targets(pd.Timestamp("2025-03-19T13:10Z"))
+
+    assert len(targets) == 96
+    assert targets[0] == pd.Timestamp("2025-03-19T13:30Z")  # the first boundary after the issue time
+    assert targets[-1] == pd.Timestamp("2025-03-21T13:00Z")
+
+
+def test_rolling_issue_times_follow_the_uk_clock_through_a_clock_change() -> None:
+    times = rolling_issue_times(dt.date(2025, 3, 29), dt.date(2025, 3, 30))
+
+    # 13:00 UK is 13:00Z on the 29th (GMT) and 12:00Z on the 30th (BST).
+    assert pd.Timestamp("2025-03-29T13:00Z") in times
+    assert pd.Timestamp("2025-03-30T12:00Z") in times
+    # 01:00 UK doesn't exist on the 30th; it becomes 02:00 BST, which is 01:00Z.
+    assert pd.Timestamp("2025-03-30T01:00Z") in times
+    assert len(times) == 8
+    # Autumn: 01:00 UK happens twice on 26 Oct 2025; the first, BST, one is 00:00Z.
+    assert pd.Timestamp("2025-10-26T00:00Z") in rolling_issue_times(dt.date(2025, 10, 26), dt.date(2025, 10, 26))
+
+
+def test_rolling_examples_carry_lead_times_from_zero_to_48_hours() -> None:
+    source = synthetic.sources()
+    issue = pd.Timestamp("2025-03-19T07:00Z")
+
+    examples = build_rolling(source, synthetic.targets(source), [issue])
+
+    assert examples["lead_hours"].min() == 0.0
+    assert examples["lead_hours"].max() == 47.5

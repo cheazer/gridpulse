@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gridpulse_forecasting.backtest import backtest_months, run_backtest, training_rows
+from gridpulse_forecasting.backtest import backtest_months, half_hours_in, run_backtest, training_rows
 from gridpulse_forecasting.dataset import day_ahead_issue_time, london_day
 from gridpulse_forecasting.features import FEATURES
 from gridpulse_forecasting.metrics import point_metrics
@@ -139,3 +139,48 @@ def test_the_naive_benchmark_comes_from_the_tasks_own_lag() -> None:
     result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=1, naive_feature="carbon_lag_7d")
 
     assert (result.predictions["seasonal_naive"] == 123.0).all()
+
+
+def test_rolling_examples_forecast_each_half_hour_several_times() -> None:
+    # Two issue times covering the same half-hours, as rolling examples do.
+    first = examples()
+    second = first.assign(
+        issue_time=first["issue_time"] - pd.Timedelta(hours=6), demand_lag_7d=first["demand_lag_7d"] + 1
+    )
+    both = pd.concat([first, second], ignore_index=True)
+
+    result = run_backtest(Spy, both, both.drop_duplicates("target_time").set_index("target_time")["target"], months=1)
+
+    march = result.predictions
+    assert march["target_time"].duplicated().any()
+    # Each row keeps its own naive value rather than one looked up by half-hour.
+    assert sorted(march.groupby("target_time")["seasonal_naive"].nunique().unique()) == [2]
+
+
+def test_a_month_is_complete_by_its_half_hours_not_its_rows() -> None:
+    # Data to 10 April, each half-hour forecast eight times: April has plenty of rows but only 10 days.
+    frame = examples()
+    many = pd.concat([frame] * 8, ignore_index=True)
+
+    assert [str(m) for m in backtest_months(many, 1)] == ["2025-03"]
+
+
+def test_a_month_missing_its_last_day_is_not_complete() -> None:
+    # March 2025 has 31 x 48 - 2 half-hours (clocks went forward on the 30th); drop the 31st.
+    frame = examples(last="2025-03-30")
+
+    assert [str(m) for m in backtest_months(frame, 1)] == ["2025-02"]
+
+
+@pytest.mark.parametrize(
+    ("month", "half_hours"), [("2025-02", 28 * 48), ("2025-03", 31 * 48 - 2), ("2025-10", 31 * 48 + 2)]
+)
+def test_half_hours_in_a_month_follow_the_uk_clock(month: str, half_hours: int) -> None:
+    assert half_hours_in(pd.Period(month)) == half_hours
+
+
+def test_an_odd_missing_half_hour_does_not_disqualify_a_month() -> None:
+    frame = examples()
+    frame.loc[frame["target_time"] == pd.Timestamp("2025-03-12T11:00Z"), "target"] = float("nan")
+
+    assert [str(m) for m in backtest_months(frame, 1)] == ["2025-03"]

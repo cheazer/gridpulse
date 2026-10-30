@@ -18,7 +18,8 @@ from gridpulse_forecasting.config import DatabaseSettings
 
 # search_path: queries name tables without the grid prefix, as in the migrations.
 # timezone=UTC: timestamptz values arrive as UTC datetimes, so pandas columns are UTC-aware datetimes.
-SESSION_OPTIONS = "-c search_path=grid -c timezone=UTC -c default_transaction_read_only=on"
+SESSION_OPTIONS = "-c search_path=grid -c timezone=UTC"
+READ_ONLY = " -c default_transaction_read_only=on"
 
 TIMESTAMPTZ_OID = psycopg.adapters.types["timestamptz"].oid
 
@@ -28,8 +29,11 @@ Query = LiteralString | bytes | sql.SQL | sql.Composed
 
 
 class Database:
-    def __init__(self, settings: DatabaseSettings) -> None:
+    def __init__(self, settings: DatabaseSettings, read_only: bool = True) -> None:
+        # Read-only unless a caller asks otherwise; only the forecast job does, with a login that may only write
+        # model forecasts (V7).
         self._settings = settings
+        self._read_only = read_only
 
     def connect(self) -> psycopg.Connection[tuple[Any, ...]]:
         s = self._settings
@@ -39,7 +43,7 @@ class Database:
             dbname=s.dbname,
             user=s.user,
             password=s.password.get_secret_value(),
-            options=SESSION_OPTIONS,
+            options=SESSION_OPTIONS + (READ_ONLY if self._read_only else ""),
             application_name="gridpulse-forecasting",
         )
 

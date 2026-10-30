@@ -30,6 +30,21 @@ EXCEPTION WHEN insufficient_privilege THEN
     RAISE NOTICE 'PASS  forecasting logs in with its own password, reads, and cannot write';
 END $$;
 SQL
+docker compose exec -T -e PGPASSWORD="$FORECAST_JOB_DB_PASSWORD" timescaledb \
+  psql -X -q -h localhost -U forecast_job -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<'SQL'
+BEGIN;
+SELECT count(*) FROM grid.national_demand_actual;
+INSERT INTO grid.model_forecast (task, model, model_version, issued_at, valid_from, valid_to, unit, p10, p50, p90)
+VALUES ('demand', 'login-check', 'v', '2020-01-01T00:00Z', '2020-01-01T00:00Z', '2020-01-01T00:30Z', 'MW', 1, 2, 3);
+DO $$
+BEGIN
+    DELETE FROM grid.demand;
+    RAISE EXCEPTION 'forecast_job login was allowed to delete demand';
+EXCEPTION WHEN insufficient_privilege THEN
+    RAISE NOTICE 'PASS  forecast_job reads inputs, writes model forecasts, and cannot touch event data';
+END $$;
+ROLLBACK;
+SQL
 docker compose exec -T -e PGPASSWORD="$MLFLOW_DB_PASSWORD" timescaledb \
   psql -X -q -h localhost -U mlflow -d mlflow -v ON_ERROR_STOP=1 <<'SQL'
 CREATE TABLE ownership_check (id int);  -- mlflow owns its database, so it can create its schema

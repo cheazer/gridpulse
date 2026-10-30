@@ -14,7 +14,14 @@ from gridpulse_forecasting.tasks import Task
 POINT = {MODEL: f"{MODEL}_p50", NESO: NESO, NAIVE: NAIVE}
 
 
-def accuracy_report(result: BacktestResult, task: Task, model_name: str, run_id: str | None, generated: dt.date) -> str:
+def accuracy_report(
+    result: BacktestResult,
+    task: Task,
+    model_name: str,
+    run_id: str | None,
+    generated: dt.date,
+    rolling: bool = False,
+) -> str:
     p = result.predictions
     summary = result.summary
     common = p.dropna(subset=["actual", *POINT.values()])
@@ -27,16 +34,23 @@ def accuracy_report(result: BacktestResult, task: Task, model_name: str, run_id:
     by_mae = task.name == "carbon"
 
     lines = [
-        f"# {task.title}",
+        f"# {task.title.replace('Day-ahead', 'Rolling 48-hour') if rolling else task.title}",
         "",
         f"Generated {generated:%Y-%m-%d} by "
-        f"`python -m gridpulse_forecasting backtest --task {task.name} --model {model_name} --report ...`"
+        f"`python -m gridpulse_forecasting backtest --task {task.name} --model {model_name}"
+        + (" --mode rolling" if rolling else "")
+        + " --report ...`"
         + (f" (MLflow run `{run_id}`)." if run_id else "."),
         "",
         f"Rolling-origin backtest over **{folds[0]} to {folds[-1]}** ({len(folds)} months): a fresh model each month, "
-        "fitted on what was known at the month's first issue time, forecasting each day as of **13:00 UK time the "
-        "day before** (ADR-0010, ADR-0011). All forecasts are scored on the same "
-        f"**{len(common):,} half-hours**. {task.about}",
+        "fitted on what was known at the month's first issue time, "
+        + (
+            "issuing forecasts **every 6 hours (01:00, 07:00, 13:00, 19:00 UK) for the next 48 hours**, as the "
+            "forecast job does. Each half-hour is forecast several times, at different lead times. "
+            if rolling
+            else "forecasting each day as of **13:00 UK time the day before**. "
+        )
+        + f"(ADR-0010, ADR-0011.) All forecasts are scored on the same **{len(common):,} forecasts**. {task.about}",
         "",
         "## Headline",
         "",
@@ -96,6 +110,21 @@ def accuracy_report(result: BacktestResult, task: Task, model_name: str, run_id:
         grouped(common, block, "UK time", labels, by_mae, cell),
     ]
 
+    if rolling:
+        lead = (common["target_time"] - common["issue_time"]).dt.total_seconds() / 3600
+        bucket = pd.cut(
+            lead, [0, 6, 12, 24, 36, 48], right=False, labels=["0-6 h", "6-12 h", "12-24 h", "24-36 h", "36-48 h"]
+        )
+        lines += [
+            "",
+            f"## {metric} by lead time",
+            "",
+            "How far ahead the forecast was issued. NESO's forecast is the same whatever the lead (its 13:00 day-ahead "
+            "or final forecast), so only GridPulse's column should change down the table.",
+            "",
+            grouped(common, bucket, "Lead", labels, by_mae, cell),
+        ]
+
     importance = getattr(result.final_model, "feature_importance", None)
     if importance is not None:
         top = importance().head(10)
@@ -125,7 +154,8 @@ def grouped(
             for name, column in POINT.items()
         }
     )
-    means = errors.groupby(key).mean()
+    # observed=True: a categorical key (lead buckets) keeps its own order and skips empty buckets.
+    means = errors.groupby(key, observed=True).mean()
     return table(
         [heading, *(labels[c] for c in means.columns)],
         [[str(group), *(cell(v) for v in row)] for group, row in means.iterrows()],

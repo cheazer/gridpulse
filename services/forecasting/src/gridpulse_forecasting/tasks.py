@@ -12,6 +12,7 @@ from functools import partial
 
 import pandas as pd
 
+from gridpulse_forecasting.dataset import ROLLING_ISSUE_HOURS
 from gridpulse_forecasting.db import Database
 from gridpulse_forecasting.experiments import variant_models
 from gridpulse_forecasting.features import CARBON_FEATURES
@@ -39,10 +40,15 @@ class Task:
     about: str
     naive_feature: str
     experiment: str
+    # The model the forecast job runs: trained on rolling examples (every lead time up to 48 hours).
+    production: Callable[[], Forecaster]
     models: dict[str, Callable[[], Forecaster]] = field(default_factory=dict)
 
 
 CARBON_CONFIG = ModelConfig(features=tuple(CARBON_FEATURES))
+
+# CQR's calibration window, 8 weeks, in rolling-example rows: 4 issue times a day x 96 half-hours each.
+ROLLING_CALIBRATION_ROWS = 8 * 7 * len(ROLLING_ISSUE_HOURS) * 96
 
 DEMAND = Task(
     name="demand",
@@ -58,6 +64,7 @@ DEMAND = Task(
     ),
     naive_feature="demand_lag_7d",
     experiment="day-ahead-demand",
+    production=partial(ConformalisedLightGBM, ModelConfig(), ROLLING_CALIBRATION_ROWS),
     models={
         "seasonal-naive": partial(SeasonalNaive, "demand_lag_7d"),
         "lightgbm-quantile": LightGBMQuantiles,
@@ -82,6 +89,7 @@ CARBON = Task(
     ),
     naive_feature="carbon_lag_7d",
     experiment="day-ahead-carbon",
+    production=partial(ConformalisedLightGBM, CARBON_CONFIG, ROLLING_CALIBRATION_ROWS),
     models={
         "seasonal-naive": partial(SeasonalNaive, "carbon_lag_7d"),
         "lightgbm-quantile": partial(LightGBMQuantiles, CARBON_CONFIG),

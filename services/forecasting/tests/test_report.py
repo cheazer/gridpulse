@@ -52,3 +52,18 @@ def test_carbon_report_leads_with_mae_and_labels_the_benchmark_honestly() -> Non
     assert "## MAE by month" in report and "## MAE by time of day (UK)" in report
     assert "gCO2/kWh" in report
     assert "is not a day-ahead forecast" in report
+
+
+def test_rolling_report_breaks_accuracy_down_by_lead_time() -> None:
+    frame = examples()
+    result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=1)
+
+    report = accuracy_report(result, DEMAND, "spy", None, dt.date(2026, 10, 30), rolling=True)
+
+    assert report.startswith("# Rolling 48-hour demand forecast accuracy")
+    assert "--model spy --mode rolling --report" in report
+    assert "## MAPE by lead time" in report
+    assert "every 6 hours" in report
+    # Day-ahead synthetic examples have leads of 11 to 35 hours, listed in lead order, not alphabetically.
+    assert "| 0-6 h |" not in report
+    assert report.index("| 6-12 h |") < report.index("| 12-24 h |") < report.index("| 24-36 h |")

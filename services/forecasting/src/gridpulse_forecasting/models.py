@@ -147,18 +147,20 @@ class ConformalisedLightGBM:
 
     name = "lightgbm-cqr"
 
-    CALIBRATION_ROWS = 8 * 7 * 48  # the last 8 weeks of half-hours
+    CALIBRATION_ROWS = 8 * 7 * 48  # the last 8 weeks of day-ahead examples
     COVERAGE = 0.8
 
-    def __init__(self, config: ModelConfig | None = None) -> None:
+    def __init__(self, config: ModelConfig | None = None, calibration_rows: int | None = None) -> None:
+        # Rows, not time: a day-ahead dataset has 48 rows a day, a rolling one 4 issue times x 96 = 384.
+        self.calibration_rows = calibration_rows or self.CALIBRATION_ROWS
         self._point = LightGBMQuantiles(config)
         self._band = LightGBMQuantiles(config)
         self._margin: float | None = None
 
     def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
-        if len(features) <= 2 * self.CALIBRATION_ROWS:
-            raise ValueError(f"need more than {2 * self.CALIBRATION_ROWS} rows to hold out a calibration window")
-        proper, calibration = slice(None, -self.CALIBRATION_ROWS), slice(-self.CALIBRATION_ROWS, None)
+        if len(features) <= 2 * self.calibration_rows:
+            raise ValueError(f"need more than {2 * self.calibration_rows} rows to hold out a calibration window")
+        proper, calibration = slice(None, -self.calibration_rows), slice(-self.calibration_rows, None)
         self._band.fit(features.iloc[proper], target.iloc[proper])
         self._margin = conformal_margin(
             target.iloc[calibration].to_numpy(dtype="float64"),
@@ -181,7 +183,7 @@ class ConformalisedLightGBM:
         return pd.DataFrame(np.sort(raw, axis=1), columns=["p10", "p50", "p90"], index=features.index)
 
     def params(self) -> dict[str, str | int | float]:
-        return {**self._point.params(), "calibration_rows": self.CALIBRATION_ROWS, "target_coverage": self.COVERAGE}
+        return {**self._point.params(), "calibration_rows": self.calibration_rows, "target_coverage": self.COVERAGE}
 
     def feature_importance(self) -> pd.Series:
         return self._point.feature_importance()

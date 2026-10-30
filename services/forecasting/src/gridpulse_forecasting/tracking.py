@@ -62,7 +62,12 @@ def log_backtest(
 
 
 def git_commit() -> str:
-    """The commit the code ran from, so a run can be reproduced; "unknown" outside a git checkout."""
+    """The commit the code ran from, so a run can be reproduced.
+
+    A container has no git checkout, so the image records its commit in GRIDPULSE_VERSION at build time.
+    """
+    if version := os.environ.get("GRIDPULSE_VERSION"):
+        return version
     try:
         out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True)
     except (OSError, subprocess.CalledProcessError):

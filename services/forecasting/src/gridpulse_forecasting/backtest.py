@@ -38,14 +38,26 @@ class BacktestResult:
 
 def backtest_months(examples: pd.DataFrame, months: int) -> list[pd.Period]:
     """The last ``months`` complete UK months with known targets."""
-    rows_per_month = uk_month(examples.loc[examples["target"].notna(), "target_time"]).value_counts()
-    # Complete means at least 46 half-hours (the shortest UK day) for every day of the month.
+    # Distinct half-hours, not rows: a rolling dataset forecasts each half-hour several times, so counting rows would
+    # call a half-finished month complete.
+    known = examples.loc[examples["target"].notna(), "target_time"].drop_duplicates()
+    per_month = uk_month(known).value_counts()
+    # Complete means less than a day's worth missing, counted on the UK clock (a clock-change month has two
+    # half-hours fewer or more): an odd gap in the data passes, a month still in progress doesn't. A looser rule
+    # (46 a day) once let a month missing its last day through.
     complete = [
         month
-        for month, rows in zip(map(pd.Period, rows_per_month.index), rows_per_month, strict=True)
-        if rows >= month.days_in_month * 46
+        for month, half_hours in zip(map(pd.Period, per_month.index), per_month, strict=True)
+        if half_hours > half_hours_in(month) - 48
     ]
     return sorted(complete)[-months:]
+
+
+def half_hours_in(month: pd.Period) -> int:
+    """How many half-hours a UK calendar month has: 48 a day, give or take 2 on a clock-change day."""
+    start = pd.Timestamp(month.start_time).tz_localize(LONDON)
+    end = pd.Timestamp((month + 1).start_time).tz_localize(LONDON)
+    return int((end - start) / pd.Timedelta(minutes=30))
 
 
 def uk_month(times: pd.Series) -> pd.Series:
@@ -81,7 +93,11 @@ def run_backtest(
         folds.append(
             pd.concat(
                 [
-                    test[["target_time", "issue_time"]].assign(fold=str(month), actual=test["target"]),
+                    # Seasonal naive: the target a week earlier at the same UK clock time, already a feature of
+                    # each example. Taken row by row: a rolling dataset forecasts each half-hour several times.
+                    test[["target_time", "issue_time"]].assign(
+                        fold=str(month), actual=test["target"], **{NAIVE: test[naive_feature]}
+                    ),
                     forecast,
                 ],
                 axis=1,
@@ -91,9 +107,6 @@ def run_backtest(
         raise ValueError(f"no complete months with known targets to test on (asked for {months})")
     predictions = pd.concat(folds, ignore_index=True)
     predictions[NESO] = neso.reindex(predictions["target_time"]).to_numpy()
-    # Seasonal naive: the target a week earlier at the same UK clock time, already a feature of every example.
-    seasonal_naive = examples.set_index("target_time")[naive_feature]
-    predictions[NAIVE] = seasonal_naive.reindex(predictions["target_time"]).to_numpy()
     return BacktestResult(predictions, *score(predictions), final_model=model)
 
 
