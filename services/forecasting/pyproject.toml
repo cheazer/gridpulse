@@ -5,8 +5,10 @@ description = "Demand and carbon-intensity forecasting for GridPulse (Phase 2, A
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "holidays>=0.60",
     "pandas>=3.0",
     "psycopg[binary]>=3.2",
+    "pyarrow>=18",
     "pydantic-settings>=2.6",
 ]
 
@@ -33,6 +35,8 @@ target-version = "py312"
 [tool.ruff.lint]
 # pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, naming, datetime-without-tz, pandas-vet, ruff-specific
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "DTZ", "PD", "RUF"]
+# pivot over pivot_table: pivot fails on duplicate keys, where pivot_table would silently average them.
+ignore = ["PD010"]
 
 [tool.mypy]
 strict = true
@@ -41,7 +45,7 @@ packages = ["gridpulse_forecasting"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*"]
+module = ["testcontainers.*", "pyarrow.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
