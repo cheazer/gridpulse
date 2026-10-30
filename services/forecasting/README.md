@@ -152,5 +152,18 @@ for each half-hour. Re-running for the same issue time replaces that forecast in
 - **Least privilege.** The job logs in as `forecast_job`: `grid_reader` plus V7's `forecast_writer`, which may write
   `model_forecast` and nothing else. The service's `forecasting` login stays read-only, and the ingestion writer
   (`grid_writer`) has had its default rights on `model_forecast` revoked.
+- **Scored at every lead time** ([demand](../../docs/results/forecast-accuracy-rolling.md),
+  [carbon](../../docs/results/carbon-accuracy-rolling.md), Oct 2025 to Sep 2026, about 140,000 forecasts each):
+
+  | | Production model, leads 0-48 h | Day-ahead model | Benchmarks |
+  |---|---|---|---|
+  | Demand MAPE | 4.37%, P10-P90 coverage 78% | 4.23% | NESO day-ahead 2.85%, seasonal naive 8.36% |
+  | Carbon MAE | 23.6 g/kWh, coverage 79% | 23.2 g/kWh | NESO final 9.9, seasonal naive 54.3 |
+
+  **Known limitation:** demand error is flat across lead times (4.35% at 0-6 hours, 4.40% at 36-48), so the model
+  doesn't yet use fresh data to do better at short range. Its only recent-demand inputs are the latest value and a
+  24-hour mean, neither aligned with the target's time of day. Carbon does improve at short range (21.7 g/kWh at
+  0-6 hours, 24.4 at 36-48), helped by its latest value. A "latest demand against the same time last week" feature,
+  chosen on the validation window, is a Phase 5 item.
 - **Cost.** Each run trains from scratch: about 4 minutes per task on a 2-core Codespace. Step 2.7 moves training into
   a retraining command with a model registry, so the job only loads the champion and predicts.

@@ -60,6 +60,8 @@ def test_rolling_report_breaks_accuracy_down_by_lead_time() -> None:
 
     report = accuracy_report(result, DEMAND, "spy", None, dt.date(2026, 10, 30), rolling=True)
 
+    assert report.startswith("# Rolling 48-hour demand forecast accuracy")
+    assert "--model spy --mode rolling --report" in report
     assert "## MAPE by lead time" in report
     assert "every 6 hours" in report
     # Day-ahead synthetic examples have leads of 11 to 35 hours, listed in lead order, not alphabetically.

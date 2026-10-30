@@ -34,10 +34,12 @@ def accuracy_report(
     by_mae = task.name == "carbon"
 
     lines = [
-        f"# {task.title}",
+        f"# {task.title.replace('Day-ahead', 'Rolling 48-hour') if rolling else task.title}",
         "",
         f"Generated {generated:%Y-%m-%d} by "
-        f"`python -m gridpulse_forecasting backtest --task {task.name} --model {model_name} --report ...`"
+        f"`python -m gridpulse_forecasting backtest --task {task.name} --model {model_name}"
+        + (" --mode rolling" if rolling else "")
+        + " --report ...`"
         + (f" (MLflow run `{run_id}`)." if run_id else "."),
         "",
         f"Rolling-origin backtest over **{folds[0]} to {folds[-1]}** ({len(folds)} months): a fresh model each month, "

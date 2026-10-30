@@ -99,8 +99,6 @@ def backtest(
     examples = load_examples(db, task, first, last, mode)
     benchmark = task.load_benchmark(db, *input_window(first, last))
     new_model = task.production if mode == "rolling" and model_name == "lightgbm-cqr" else task.models[model_name]
-    if mode == "rolling":
-        model_name = f"{model_name}-rolling"
 
     result = run_backtest(new_model, examples, benchmark, months, task.naive_feature)
 
@@ -111,7 +109,8 @@ def backtest(
     print()
     print("MAPE % by month:")
     print(result.by_month.round(2).to_string())
-    run_id = log_backtest(result, new_model(), task.experiment, model_name, stage)
+    run_name = f"{model_name}-rolling" if mode == "rolling" else model_name
+    run_id = log_backtest(result, new_model(), task.experiment, run_name, stage)
     print()
     print(f"MLflow run {run_id}" if run_id else "MLFLOW_TRACKING_URI not set: not logged")
     if report:
