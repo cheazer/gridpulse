@@ -4,7 +4,7 @@ Python 3.12 service that forecasts GB national demand and carbon intensity 24–
 NESO's day-ahead forecast ([ADR-0010](../../docs/adr/0010-day-ahead-benchmark.md)). Design:
 [ADR-0011](../../docs/adr/0011-forecasting-design.md).
 
-Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder, the backtest harness, and day-ahead models for demand and carbon intensity.
+Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder, the backtest harness, demand and carbon-intensity models, the forecast job and the API.
 
 ## Develop
 
@@ -167,3 +167,29 @@ for each half-hour. Re-running for the same issue time replaces that forecast in
   chosen on the validation window, is a Phase 5 item.
 - **Cost.** Each run trains from scratch: about 4 minutes per task on a 2-core Codespace. Step 2.7 moves training into
   a retraining command with a model registry, so the job only loads the champion and predicts.
+
+## The API
+
+```bash
+docker compose up -d forecasting-api                      # from the repo root; docs at http://localhost:8000/docs
+docker compose --profile jobs run --rm forecast-job       # fill it: train, forecast 48 hours, store
+curl "http://localhost:8000/v1/forecasts/carbon?from=2026-10-31T00:00Z&to=2026-11-01T00:00Z"
+```
+
+[api.py](src/gridpulse_forecasting/api.py), FastAPI:
+
+| Endpoint | |
+|---|---|
+| `GET /v1/forecasts/{demand\|carbon}?from=&to=` | The newest stored forecast for each half-hour in `[from, to)`: P10/P50/P90, when it was issued, by which model version. Defaults to the next 48 hours; at most 7 days; timestamps must carry a zone. `stale` is true if the newest forecast is over 7 hours old or there is none. |
+| `GET /health` | Liveness: the process is up. Never touches the database, so a database outage doesn't get the API restarted. |
+| `GET /ready` | Readiness: the database answers (503 if not), so traffic only goes to instances that can serve it. |
+
+- **Nothing is computed per request.** The API reads `grid.model_forecast_latest`, which the forecast job fills, so it
+  stays fast and every caller sees the same numbers.
+- **Read-only twice over:** it connects as the `forecasting` login (`grid_reader`), and every pooled session starts
+  read-only.
+- **One image** for the API and the job ([Dockerfile](Dockerfile)): multi-stage, dependencies installed from
+  `uv.lock` only (`uv sync --locked`), a non-root user, and the git commit baked in as `GRIDPULSE_VERSION`, which
+  every stored forecast records. It's 1 GB, mostly LightGBM, SciPy and pandas; an API-only image without the
+  training stack is a Phase 4 item.
+- CI builds the image, starts the API through Compose against a freshly migrated database, and smoke-tests it.
