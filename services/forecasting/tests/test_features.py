@@ -159,3 +159,24 @@ def test_a_missing_location_makes_national_weather_missing() -> None:
 
     assert examples["temperature_c"].isna().all()
     assert np.isnan(examples["solar_radiation_wm2"]).all()
+
+
+# ------------------------------------------------------------------ week on week
+
+
+def test_demand_change_compares_the_last_24h_with_the_same_hours_a_week_before(examples: pd.DataFrame) -> None:
+    # Synthetic demand rises 1 MW per half-hour, so the last 24 h average 336 MW above the week before.
+    indo = synthetic.sources().indo.set_index("valid_from")["demand_mw"]
+    recent = indo[(indo.index >= pd.Timestamp("2025-03-18T13:00Z")) & (indo.index <= pd.Timestamp("2025-03-19T11:30Z"))]
+
+    expected = (recent.mean() / (recent.mean() - 336) - 1) * 100
+    assert examples["demand_change_24h_pct"].iloc[0] == pytest.approx(expected)
+
+
+def test_weather_change_compares_with_last_weeks_weather_as_finally_forecast(examples: pd.DataFrame) -> None:
+    # Last week's hours were long past at the cut-off, so their latest revision is the 24 h one (12.4 C). This
+    # week's evening only has the 48 h revision (14.8 C) by the cut-off; its afternoon has the 24 h one.
+    assert at(examples, "2025-03-20T12:00Z")["temperature_change_7d_c"] == pytest.approx(0.0)
+    assert at(examples, "2025-03-20T18:00Z")["temperature_change_7d_c"] == pytest.approx(14.8 - 12.4)
+    # Synthetic radiation depends only on the hour, which is the same a week earlier in GMT.
+    assert (examples["solar_radiation_change_7d_wm2"] == 0).all()

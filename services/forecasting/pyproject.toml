@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "holidays>=0.60",
+    "lightgbm>=4.7,<5",
     # The MLflow client without the server's dependencies; same minor version as the server in Compose.
     "mlflow-skinny>=3.17,<3.18",
     "pandas>=3.0",
@@ -47,7 +48,7 @@ packages = ["gridpulse_forecasting"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "pyarrow.*", "mlflow.*"]
+module = ["testcontainers.*", "pyarrow.*", "mlflow.*", "lightgbm.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

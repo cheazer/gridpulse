@@ -32,6 +32,8 @@ class BacktestResult:
     summary: pd.DataFrame
     # MAPE per test month and forecast, on the same half-hours.
     by_month: pd.DataFrame
+    # The last month's model, fitted on the most history: what feature importance is read from.
+    final_model: Forecaster
 
 
 def backtest_months(examples: pd.DataFrame, months: int) -> list[pd.Period]:
@@ -66,6 +68,7 @@ def run_backtest(
 ) -> BacktestResult:
     """Backtest a fresh model per month over the last ``months`` complete months of ``examples``."""
     folds = []
+    model: Forecaster | None = None
     local_month = uk_month(examples["target_time"])
     for month in backtest_months(examples, months):
         test = examples[(local_month == month) & examples["target_mw"].notna()]
@@ -83,11 +86,13 @@ def run_backtest(
                 axis=1,
             )
         )
+    if model is None:
+        raise ValueError(f"no complete months with known targets to test on (asked for {months})")
     predictions = pd.concat(folds, ignore_index=True)
     predictions[NESO] = neso.reindex(predictions["target_time"]).to_numpy()
     seasonal_naive = SeasonalNaive().predict(examples.set_index("target_time")[FEATURES])["p50"]
     predictions[NAIVE] = seasonal_naive.reindex(predictions["target_time"]).to_numpy()
-    return BacktestResult(predictions, *score(predictions))
+    return BacktestResult(predictions, *score(predictions), final_model=model)
 
 
 def score(predictions: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:

@@ -16,16 +16,21 @@ from gridpulse_forecasting.models import Forecaster
 EXPERIMENT = "day-ahead-demand"
 
 
-def log_backtest(result: BacktestResult, model: Forecaster) -> str | None:
-    """Log parameters, metrics for the model and both benchmarks, and the result tables. Returns the run id."""
+def log_backtest(result: BacktestResult, model: Forecaster, name: str | None = None, stage: str = "test") -> str | None:
+    """Log parameters, metrics for the model and both benchmarks, and the result tables. Returns the run id.
+
+    ``stage`` is "validation" for runs that choose between designs and "test" for the final score, so the two can
+    never be confused when reading results back.
+    """
     if not os.environ.get("MLFLOW_TRACKING_URI"):
         return None
     import mlflow  # imported lazily: only runs that log need it
 
     mlflow.set_experiment(EXPERIMENT)
     folds = sorted(result.predictions["fold"].unique())
-    with mlflow.start_run(run_name=model.name) as run:
-        mlflow.set_tags({"model": model.name, "git_commit": git_commit()})
+    run_name = name or model.name
+    with mlflow.start_run(run_name=f"{run_name} ({stage})") as run:
+        mlflow.set_tags({"model": run_name, "stage": stage, "git_commit": git_commit()})
         mlflow.log_params(
             {
                 **model.params(),
@@ -46,6 +51,9 @@ def log_backtest(result: BacktestResult, model: Forecaster) -> str | None:
         )
         mlflow.log_text(result.summary.to_csv(), "summary.csv")
         mlflow.log_text(result.by_month.to_csv(), "mape_by_month.csv")
+        importance = getattr(result.final_model, "feature_importance", None)
+        if importance is not None:
+            mlflow.log_text(importance().rename("gain_share").to_csv(), "feature_importance.csv")
         return str(run.info.run_id)
 
 

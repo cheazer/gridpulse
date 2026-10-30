@@ -4,7 +4,7 @@ Python 3.12 service that forecasts GB national demand and carbon intensity 24–
 NESO's day-ahead forecast ([ADR-0010](../../docs/adr/0010-day-ahead-benchmark.md)). Design:
 [ADR-0011](../../docs/adr/0011-forecasting-design.md).
 
-Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder and the backtest harness.
+Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder, the backtest harness and the first demand model.
 
 ## Develop
 
@@ -77,3 +77,35 @@ A rolling-origin backtest ([backtest.py](src/gridpulse_forecasting/backtest.py))
 Seasonal naive over Oct 2025 to Sep 2026: **8.36% MAPE** against NESO's **2.85%** on the same 17,520 half-hours.
 NESO's 2.85% is higher than the two-year 2.74% in the data-quality report because these 12 months include its
 weakest stretch, March to July (3.2-4.0% a month).
+
+## The demand model
+
+`lightgbm-cqr` ([models.py](src/gridpulse_forecasting/models.py)): LightGBM with the quantile (pinball) objective, one
+model each for P10, P50 and P90, so the band is learned rather than a symmetric error bar. Hyperparameters were set
+once before any backtest and not tuned on the test months.
+
+**Calibrated intervals.** Plain quantile models were badly overconfident on new data: their P10-P90 band held only
+48% of actuals instead of 80%, because they partly fit the training noise and demand drifts. Conformalised quantile
+regression (CQR) fixes this. The band models are fitted without the last 8 weeks of training data, and those 8 weeks
+measure how far actuals fell outside the band. The band is then widened by that margin, the ceil((n + 1) x 0.8)-th
+smallest overshoot. The median model, which needs no calibration, still trains on everything.
+
+**Results** ([docs/results/forecast-accuracy.md](../../docs/results/forecast-accuracy.md), Oct 2025 to Sep 2026):
+
+| | MAPE | P10-P90 coverage |
+|---|---|---|
+| GridPulse (`lightgbm-cqr`) | 4.23% | 79.7% (plain quantiles: 48%) |
+| NESO day-ahead | **2.85%** | - |
+| Seasonal naive | 8.36% | - |
+
+The model halves seasonal naive's error but does **not** beat NESO yet; it trails in every month. The gap is largest
+at midday (12:00-16:00 UK: 6.6% against NESO's 4.4%), when embedded solar, invisible to the transmission system,
+cuts national demand. NESO forecasts embedded solar and wind directly; this model only sees national-average
+radiation, and leans mostly on past demand.
+
+**Trying to close the gap** ([docs/results/demand-model-experiments.md](../../docs/results/demand-model-experiments.md)).
+Ten variants were compared on a validation window (Jul to Sep 2025) before the test months, so the test months were
+scored only once: per-location solar, a ratio-to-last-week target, week-on-week changes in demand and weather, and
+four hyperparameter settings. None beat the first model by more than noise, so it stays. Run them with
+`compare-variants`; each is logged to MLflow with `stage=validation`. More history and a "NESO + correction" model
+are left for Phase 5.

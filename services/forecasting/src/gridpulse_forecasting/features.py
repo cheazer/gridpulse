@@ -37,7 +37,8 @@ HEATING_BASE_C = 15.5
 
 LAG_DAYS = (2, 7, 14)
 
-FEATURES = [
+# The features of the first model (step 2.4).
+BASE_FEATURES = [
     "lead_hours",
     "half_hour_of_day",
     "day_of_week",
@@ -57,6 +58,18 @@ FEATURES = [
     "weather_forecast_age_hours",
 ]
 
+# Solar radiation at each location. Embedded (rooftop and small-farm) solar cuts national demand at midday and is
+# concentrated in the south and east, so where the sun shines matters, not just the national average.
+REGIONAL_SOLAR = [f"solar_radiation_{location}_wm2" for location in POPULATION_WEIGHTS]
+
+# How this week differs from last week. The strongest single input is demand a week earlier; these tell the
+# model how to adjust it: the recent level of demand against the same hours a week before, and the target hour's
+# forecast weather against the weather at the same UK clock time a week before.
+WEEK_ON_WEEK = ["demand_change_24h_pct", "temperature_change_7d_c", "solar_radiation_change_7d_wm2"]
+
+# Everything the dataset builds; each model chooses its subset (models.ModelConfig).
+FEATURES = [*BASE_FEATURES, *REGIONAL_SOLAR, *WEEK_ON_WEEK]
+
 
 def build_features(snapshot: Sources, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
     """One row per target half-hour, columns as FEATURES; NaN where the snapshot doesn't have the input."""
@@ -65,6 +78,10 @@ def build_features(snapshot: Sources, issue_time: pd.Timestamp, targets: pd.Date
     frame = frame.join(calendar_features(targets))
     frame = frame.join(demand_features(snapshot.indo, issue_time, targets))
     frame = frame.join(weather_features(snapshot.weather, targets))
+    # Last week's weather as the snapshot last saw it: for past hours that's the final forecast for them.
+    last_week = weather_features(snapshot.weather, same_wall_time(targets, 7))
+    frame["temperature_change_7d_c"] = frame["temperature_c"] - last_week["temperature_c"].to_numpy()
+    frame["solar_radiation_change_7d_wm2"] = frame["solar_radiation_wm2"] - last_week["solar_radiation_wm2"].to_numpy()
     return frame[FEATURES]
 
 
@@ -106,6 +123,12 @@ def demand_features(indo: pd.DataFrame, issue_time: pd.Timestamp, targets: pd.Da
     recent = demand[demand.index >= issue_time - pd.Timedelta(hours=24)]
     frame["demand_latest"] = demand.iloc[-1] if len(demand) else np.nan
     frame["demand_mean_24h"] = recent.mean() if len(recent) else np.nan
+    # The same half-hours a week earlier (the same instants: a day-length difference doesn't matter for a mean).
+    week_before = demand.reindex(pd.DatetimeIndex(recent.index) - pd.Timedelta(days=7)).to_numpy()
+    paired = ~np.isnan(week_before)
+    frame["demand_change_24h_pct"] = (
+        (recent.to_numpy()[paired].mean() / week_before[paired].mean() - 1) * 100 if paired.any() else np.nan
+    )
     return frame
 
 
@@ -136,7 +159,8 @@ def weather_features(weather: pd.DataFrame, targets: pd.DatetimeIndex) -> pd.Dat
     temperature = weighted_mean(by_location("temperature_2m_c"), weights)
     # Open-Meteo's radiation at t is the mean over the hour *ending* at t (ADR-0008), so the hour starting at h
     # takes the value stamped h + 1h.
-    radiation = weighted_mean(by_location("shortwave_radiation_wm2", hours_later=1), weights)
+    radiation_by_location = by_location("shortwave_radiation_wm2", hours_later=1)
+    radiation = weighted_mean(radiation_by_location, weights)
 
     return pd.DataFrame(
         {
@@ -146,6 +170,10 @@ def weather_features(weather: pd.DataFrame, targets: pd.DatetimeIndex) -> pd.Dat
             "solar_radiation_wm2": radiation,
             "cloud_cover_pct": by_location("cloud_cover_pct").mean(axis=1, skipna=False).to_numpy(),
             "weather_forecast_age_hours": by_location("age_hours").mean(axis=1, skipna=False).to_numpy(),
+            **{
+                f"solar_radiation_{location}_wm2": radiation_by_location[location].to_numpy()
+                for location in POPULATION_WEIGHTS
+            },
         },
         index=targets,
     )
