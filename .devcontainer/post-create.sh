@@ -4,11 +4,11 @@ set -euo pipefail
 
 pipx install uv
 
-# Local-only .env with a random database password; never committed (.gitignore).
+# Local-only .env with random database passwords; never committed (.gitignore).
 if [[ ! -f .env ]]; then
-  password=$(python3 -c 'import secrets; print(secrets.token_urlsafe(18))')
-  sed "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${password}/" .env.example > .env
-  echo "Created .env with a random POSTGRES_PASSWORD"
+  random() { python3 -c 'import secrets; print(secrets.token_urlsafe(18))'; }
+  sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(random)/"       -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(random)/" .env.example > .env
+  echo "Created .env with random database passwords"
 fi
 
 echo

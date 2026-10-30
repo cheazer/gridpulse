@@ -3,7 +3,7 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phase 1 complete: live ingestion from three sources, two years of history loaded, and a data-quality report. Next: Phase 2, forecasting. This README grows into the full write-up in Phase 5.
+> **Status:** Phase 1 complete: live ingestion from three sources, two years of history loaded, and a data-quality report. Phase 2, forecasting, in progress ([ADR-0011](docs/adr/0011-forecasting-design.md)). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -35,7 +35,7 @@ Java 21, .NET 10, Python 3.12, uv and Docker, and creates `.env` for you. Run `d
 Locally, you need Docker Desktop (or Docker Engine with Compose v2.20+).
 
 ```bash
-cp .env.example .env    # then set POSTGRES_PASSWORD
+cp .env.example .env    # then set POSTGRES_PASSWORD and FORECAST_DB_PASSWORD
 docker compose up -d
 ```
 
@@ -46,9 +46,10 @@ docker compose up -d
 | Schema Registry | http://localhost:18081 |
 | TimescaleDB | `localhost:5432` (credentials from `.env`) |
 
-On start-up three one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
-`schema-init` registers the event schemas with `BACKWARD` compatibility, and `migrate` applies the
-TimescaleDB migrations in [db/migrations](db/migrations) with Flyway. All three are idempotent.
+On start-up four one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
+`schema-init` registers the event schemas with `BACKWARD` compatibility, `migrate` applies the
+TimescaleDB migrations in [db/migrations](db/migrations) with Flyway, and `db-users` creates per-service logins
+(so far the forecasting service's read-only one) with passwords from `.env`. All four are idempotent.
 
 Then `ingestion-app` polls the live Carbon Intensity API (on start-up and every half-hour) and `timescale-sink`
 writes the events to TimescaleDB. The first build of the two Java images takes a few minutes. A minute after
