@@ -1,0 +1,35 @@
+name: forecasting
+
+on:
+  push:
+    branches: [main]
+    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/infra.yaml", ".github/workflows/forecasting.yml"]
+  pull_request:
+    paths: ["services/forecasting/**", "db/migrations/**", "deploy/compose/infra.yaml", ".github/workflows/forecasting.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/forecasting
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/forecasting/uv.lock
+      # --locked fails if pyproject.toml and uv.lock disagree, so CI tests exactly what was reviewed.
+      - name: Install from the lockfile
+        run: uv sync --locked
+      - name: Formatting
+        run: uv run ruff format --check .
+      - name: Lint
+        run: uv run ruff check .
+      - name: Types
+        run: uv run mypy
+      - name: Unit and integration tests (Testcontainers)
+        run: uv run pytest

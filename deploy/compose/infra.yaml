@@ -103,6 +103,24 @@ services:
       - ../../db/migrations:/flyway/sql:ro
     restart: "no"
 
+  # Login users for services that shouldn't use the admin account. Runs after every migrate,
+  # so a password changed in .env takes effect on the next `docker compose up`.
+  db-users:
+    image: timescale/timescaledb:2.30.2-pg17
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/bash", "/scripts/create-db-users.sh"]
+    environment:
+      PGHOST: timescaledb
+      PGDATABASE: ${POSTGRES_DB:-gridpulse}
+      PGUSER: ${POSTGRES_USER:-gridpulse}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set POSTGRES_PASSWORD}
+      FORECAST_DB_PASSWORD: ${FORECAST_DB_PASSWORD:?add FORECAST_DB_PASSWORD to .env (see .env.example)}
+    volumes:
+      - ./scripts:/scripts:ro
+    restart: "no"
+
 volumes:
   redpanda-data:
   timescale-data:

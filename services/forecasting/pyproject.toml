@@ -1,0 +1,50 @@
+[project]
+name = "gridpulse-forecasting"
+version = "0.1.0"
+description = "Demand and carbon-intensity forecasting for GridPulse (Phase 2, ADR-0011)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pandas>=3.0",
+    "psycopg[binary]>=3.2",
+    "pydantic-settings>=2.6",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pandas-stubs>=3.0",
+    "pytest>=8.3",
+    "ruff>=0.8",
+    "testcontainers[postgres]>=4.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gridpulse_forecasting"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, pyupgrade, simplify, naming, datetime-without-tz, pandas-vet, ruff-specific
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "DTZ", "PD", "RUF"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+packages = ["gridpulse_forecasting"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["testcontainers.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-ra"]
+markers = ["integration: needs Docker (starts a TimescaleDB container)"]

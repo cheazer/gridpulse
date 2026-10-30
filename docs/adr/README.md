@@ -17,3 +17,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0008](0008-weather-forecasts-and-reanalysis.md) | Weather: forecast revisions and reanalysis, kept apart | Accepted |
 | [0009](0009-backfill.md) | Backfill: chunked, resumable jobs through the live pipeline | Accepted |
 | [0010](0010-day-ahead-benchmark.md) | The day-ahead benchmark: NESO's NDF as published by 13:00 the day before | Accepted |
+| [0011](0011-forecasting-design.md) | Forecasting design: as-of features, one LightGBM model across horizons, forecasts served from a table | Accepted |
