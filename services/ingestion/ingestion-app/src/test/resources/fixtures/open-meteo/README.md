@@ -7,3 +7,4 @@ for 8 locations (London, Birmingham, Manchester, Leeds, Edinburgh, Cardiff, Norw
 Tests use 2026-10-28T22:24:36Z as the poll time.
 - forecast-single.json: the London entry of forecast.json on its own, the shape Open-Meteo returns for one location
 - previous-runs.json: GET https://previous-runs-api.open-meteo.com/v1/forecast for the 8 locations, *_previous_day1 variables, 2024-10-29 to 2024-10-30
+- previous-runs-day2.json: the same request with *_previous_day2 variables (the run two days earlier), recorded 2026-10-30

@@ -46,17 +46,22 @@ public class OpenMeteoMapper {
   }
 
   /**
-   * Archived day-ahead forecasts (previous-runs API, {@code _previous_day1}): each hour's value as
-   * forecast by the model run about a day earlier. {@code issued_at} is that run's 6-hour bucket,
-   * an approximation, since the API doesn't name the exact run (ADR-0009).
+   * Archived forecasts (previous-runs API, {@code _previous_dayN}): each hour's value as forecast
+   * by the model run about {@code daysEarlier} days before it. {@code issued_at} is that run's
+   * 6-hour bucket, an approximation, since the API doesn't name the exact run (ADR-0009). Each
+   * {@code daysEarlier} gives a different {@code issued_at}, so the revisions are separate events
+   * and never overwrite each other.
    */
-  public List<GridEvent> dayAheadForecasts(
-      List<Location> locations, List<LocationResponse> responses, Instant polledAt) {
+  public List<GridEvent> previousRunForecasts(
+      List<Location> locations,
+      List<LocationResponse> responses,
+      int daysEarlier,
+      Instant polledAt) {
     return map(
         locations,
         responses,
         polledAt,
-        hour -> RevisionBuckets.start(hour.minus(Duration.ofDays(1)), revisionInterval),
+        hour -> RevisionBuckets.start(hour.minus(Duration.ofDays(daysEarlier)), revisionInterval),
         hour -> true);
   }
 

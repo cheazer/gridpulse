@@ -94,7 +94,7 @@ Measured on a 2-core Codespace (29 Oct 2026), two years from 29 Oct 2024:
 |---|---|---|
 | `demand_forecast` | 2,054,592 | every NESO NDF revision: the Phase 2 benchmark |
 | `generation_mix` | 769,436 | FUELHH by fuel code, plus NESO embedded solar and wind |
-| `weather` | 280,800 | 8 locations hourly: reanalysis and archived day-ahead forecasts |
+| `weather` | 420,960 | 8 locations hourly: reanalysis, and archived forecasts made ~1 and ~2 days ahead |
 | `demand` | 138,284 | Elexon INDO/ITSDO and NESO settled ND/TSD |
 | `carbon_intensity` | 38,457 | national actuals and forecasts |
 | `system_price` | 35,063 | imbalance prices |

@@ -51,12 +51,18 @@ final class OpenMeteoFixtures {
             DIR + "archive.json",
             Pattern.quote("/forecast" + london + "&forecast_days=3"),
             DIR + "forecast-single.json",
-            Pattern.quote(
-                "/forecast"
-                    + OpenMeteoClient.coordinates(LOCATIONS)
-                    + OpenMeteoClient.PREVIOUS_DAY_COMMON
-                    + "&start_date=2024-10-29&end_date=2024-10-30"),
-            DIR + "previous-runs.json"));
+            previousRuns(1),
+            DIR + "previous-runs.json",
+            previousRuns(2),
+            DIR + "previous-runs-day2.json"));
+  }
+
+  private static String previousRuns(int daysEarlier) {
+    return Pattern.quote(
+        "/forecast"
+            + OpenMeteoClient.coordinates(LOCATIONS)
+            + OpenMeteoClient.previousRunsCommon(daysEarlier)
+            + "&start_date=2024-10-29&end_date=2024-10-30");
   }
 
   static OpenMeteoProperties properties(URI baseUrl) {
@@ -81,10 +87,12 @@ final class OpenMeteoFixtures {
   }
 
   /** The recorded previous-runs response with the lead suffix stripped, as the client does. */
-  static List<LocationResponse> dayAheadForecasts() {
+  static List<LocationResponse> previousRunForecasts(int daysEarlier) {
+    String file =
+        daysEarlier == 1 ? "previous-runs.json" : "previous-runs-day" + daysEarlier + ".json";
     String body =
-        new String(FixtureServer.resource(DIR + "previous-runs.json"), StandardCharsets.UTF_8)
-            .replace(OpenMeteoClient.PREVIOUS_DAY + "\"", "\"");
+        new String(FixtureServer.resource(DIR + file), StandardCharsets.UTF_8)
+            .replace(OpenMeteoClient.previousDaySuffix(daysEarlier) + "\"", "\"");
     return List.of(JSON.readValue(body, LocationResponse[].class));
   }
 
