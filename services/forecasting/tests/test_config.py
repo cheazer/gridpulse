@@ -1,9 +1,17 @@
 import pytest
 from pydantic import ValidationError
 
-from gridpulse_forecasting.config import DatabaseSettings
+from gridpulse_forecasting.config import DatabaseSettings, JobDatabaseSettings
 
-VARIABLES = ["POSTGRES_HOST", "TIMESCALE_PORT", "POSTGRES_DB", "FORECAST_DB_USER", "FORECAST_DB_PASSWORD"]
+VARIABLES = [
+    "POSTGRES_HOST",
+    "TIMESCALE_PORT",
+    "POSTGRES_DB",
+    "FORECAST_DB_USER",
+    "FORECAST_DB_PASSWORD",
+    "FORECAST_JOB_DB_USER",
+    "FORECAST_JOB_DB_PASSWORD",
+]
 
 
 @pytest.fixture(autouse=True)
@@ -52,3 +60,20 @@ def test_password_never_appears_in_repr(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("FORECAST_DB_PASSWORD", "s3cret")
 
     assert "s3cret" not in repr(DatabaseSettings())
+
+
+def test_the_job_has_its_own_login_and_never_borrows_the_services(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORECAST_DB_PASSWORD", "service-password")
+    monkeypatch.setenv("FORECAST_JOB_DB_PASSWORD", "job-password")
+
+    settings = JobDatabaseSettings()
+
+    assert settings.user == "forecast_job"
+    assert settings.password.get_secret_value() == "job-password"
+
+
+def test_the_job_fails_fast_without_its_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FORECAST_DB_PASSWORD", "service-password")
+
+    with pytest.raises(ValidationError, match="FORECAST_JOB_DB_PASSWORD"):
+        JobDatabaseSettings()

@@ -10,11 +10,12 @@ from typing import LiteralString, cast
 import psycopg
 import pytest
 
-from gridpulse_forecasting.config import DatabaseSettings
+from gridpulse_forecasting.config import DatabaseSettings, JobDatabaseSettings
 
 REPO = Path(__file__).resolve().parents[3]
 MIGRATIONS = REPO / "db" / "migrations"
 READER_PASSWORD = "reader-test-password"  # throwaway container; never a real credential
+JOB_PASSWORD = "job-test-password"
 
 
 def timescale_image() -> str:
@@ -47,6 +48,9 @@ def admin_conninfo() -> Iterator[str]:
                     conn.execute(cast(LiteralString, path.read_text()))
             # What deploy/compose/scripts/create-db-users.sh does for the real stack.
             conn.execute(f"CREATE ROLE forecasting LOGIN PASSWORD '{READER_PASSWORD}' IN ROLE grid_reader")
+            conn.execute(
+                f"CREATE ROLE forecast_job LOGIN PASSWORD '{JOB_PASSWORD}' IN ROLE grid_reader, forecast_writer"
+            )
         yield conninfo
 
 
@@ -60,5 +64,18 @@ def reader_settings(admin_conninfo: str) -> DatabaseSettings:
             "POSTGRES_DB": params["dbname"],
             "FORECAST_DB_USER": "forecasting",
             "FORECAST_DB_PASSWORD": READER_PASSWORD,
+        }
+    )
+
+
+@pytest.fixture
+def job_settings(admin_conninfo: str) -> JobDatabaseSettings:
+    params = dict(item.split("=", 1) for item in admin_conninfo.split())
+    return JobDatabaseSettings.model_validate(
+        {
+            "POSTGRES_HOST": params["host"],
+            "TIMESCALE_PORT": params["port"],
+            "POSTGRES_DB": params["dbname"],
+            "FORECAST_JOB_DB_PASSWORD": JOB_PASSWORD,
         }
     )

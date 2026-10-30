@@ -23,3 +23,10 @@ class DatabaseSettings(BaseSettings):
     user: str = Field(default="forecasting", validation_alias="FORECAST_DB_USER")
     # SecretStr keeps the password out of repr(), logs and tracebacks.
     password: SecretStr = Field(validation_alias="FORECAST_DB_PASSWORD")
+
+
+class JobDatabaseSettings(DatabaseSettings):
+    """The forecast job's login: reads like the service, and may also write model forecasts (V7)."""
+
+    user: str = Field(default="forecast_job", validation_alias="FORECAST_JOB_DB_USER")
+    password: SecretStr = Field(validation_alias="FORECAST_JOB_DB_PASSWORD")

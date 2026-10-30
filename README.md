@@ -35,7 +35,7 @@ Java 21, .NET 10, Python 3.12, uv and Docker, and creates `.env` for you. Run `d
 Locally, you need Docker Desktop (or Docker Engine with Compose v2.20+).
 
 ```bash
-cp .env.example .env    # then set the three *_PASSWORD values
+cp .env.example .env    # then set the four *_PASSWORD values
 docker compose up -d
 ```
 
@@ -50,7 +50,8 @@ docker compose up -d
 On start-up four one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
 `schema-init` registers the event schemas with `BACKWARD` compatibility, `migrate` applies the
 TimescaleDB migrations in [db/migrations](db/migrations) with Flyway, and `db-users` creates per-service logins
-(the forecasting service's read-only one, and MLflow's, which owns its own `mlflow` database) with passwords from
+(the forecasting service's read-only one, the forecast job's, which may also write model forecasts, and MLflow's,
+which owns its own `mlflow` database) with passwords from
 `.env`. All four are idempotent.
 
 Then `ingestion-app` polls the live Carbon Intensity API (on start-up and every half-hour) and `timescale-sink`

@@ -28,6 +28,8 @@ Environment variables only, with the same names as the rest of the stack (`.env.
 | `POSTGRES_DB` | `gridpulse` | |
 | `FORECAST_DB_USER` | `forecasting` | a login holding only `grid_reader`, created by Compose's `db-users` job |
 | `FORECAST_DB_PASSWORD` | none: required | |
+| `FORECAST_JOB_DB_USER` | `forecast_job` | the forecast job's login: reads, and writes `model_forecast` only |
+| `FORECAST_JOB_DB_PASSWORD` | none: required by `forecast` | |
 
 Against the running stack, pass the repo's `.env`:
 
@@ -131,3 +133,24 @@ carbon intensity's own history (published an hour after each half-hour, like IND
   (6 Aug 2026, physically implausible for GB) is treated as missing.
 - **Wind drives it**: 100 m wind speed is the model's largest input (27% of split gain), because wind output decides
   how much gas must run.
+
+## The forecast job
+
+```bash
+uv run --env-file ../../.env python -m gridpulse_forecasting forecast --task all
+```
+
+[job.py](src/gridpulse_forecasting/job.py) trains each task's production model on everything known now, forecasts
+the next 48 hours (96 half-hours, P10/P50/P90) from the latest half-hour, and upserts them into
+`grid.model_forecast` (migration V7). The API (step 2.6b) reads `grid.model_forecast_latest`: the newest forecast
+for each half-hour. Re-running for the same issue time replaces that forecast instead of duplicating it.
+
+- **Rolling, not just day-ahead.** The scheduler needs the next 48 hours at any time, so the production model trains
+  on rolling examples: issued every 6 hours on the UK clock (01:00, 07:00, 13:00, 19:00, so the 13:00 day-ahead case
+  is in there), each covering the next 48 hours, with lead time as a feature. The rolling backtest
+  (`backtest --mode rolling`) scores exactly this at every lead time.
+- **Least privilege.** The job logs in as `forecast_job`: `grid_reader` plus V7's `forecast_writer`, which may write
+  `model_forecast` and nothing else. The service's `forecasting` login stays read-only, and the ingestion writer
+  (`grid_writer`) has had its default rights on `model_forecast` revoked.
+- **Cost.** Each run trains from scratch: about 4 minutes per task on a 2-core Codespace. Step 2.7 moves training into
+  a retraining command with a model registry, so the job only loads the champion and predicts.

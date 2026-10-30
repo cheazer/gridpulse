@@ -28,15 +28,54 @@ def london_day(day: dt.date) -> pd.DatetimeIndex:
     return pd.date_range(start, end, freq="30min", inclusive="left", name="target_time")
 
 
+# The rolling forecast looks 48 hours ahead (96 half-hours) from whenever it is issued (ADR-0011).
+HORIZON = pd.Timedelta(hours=48)
+
+# Training issue times for the rolling model: every 6 hours on the UK clock, including the 13:00 day-ahead cut-off,
+# so the model learns every lead time from 0 to 48 hours and is trained on the day-ahead case it is judged on.
+ROLLING_ISSUE_HOURS = (1, 7, 13, 19)
+
+
 def build_day_ahead(sources: Sources, targets: pd.Series, days: Iterable[dt.date]) -> pd.DataFrame:
-    """Day-ahead examples for each UK day in ``days``: features as of 13:00 the day before, and the actual demand.
+    """Day-ahead examples for each UK day in ``days``: features as of 13:00 the day before, and the actual.
 
     ``target`` is NaN where the actual isn't known yet, so the same function builds rows to predict.
     """
+    return build_examples(sources, targets, ((day_ahead_issue_time(day), london_day(day)) for day in days))
+
+
+def build_rolling(sources: Sources, targets: pd.Series, issue_times: Iterable[pd.Timestamp]) -> pd.DataFrame:
+    """Rolling examples: from each issue time, every half-hour of the next 48 hours."""
+    return build_examples(sources, targets, ((t, rolling_targets(t)) for t in issue_times))
+
+
+def rolling_targets(issue_time: pd.Timestamp) -> pd.DatetimeIndex:
+    """The 96 half-hours starting at the first boundary at or after ``issue_time``."""
+    start = issue_time.ceil("30min")
+    return pd.date_range(start, start + HORIZON, freq="30min", inclusive="left", name="target_time")
+
+
+def rolling_issue_times(first: dt.date, last: dt.date) -> list[pd.Timestamp]:
+    """Training issue times for UK days first..last, at ROLLING_ISSUE_HOURS UK time, in UTC.
+
+    01:00 doesn't exist on the spring clock-change day (clocks jump to 02:00), so it moves to 02:00 BST; on the
+    autumn day 01:00 happens twice, and the first (BST) one is used.
+    """
+    days = pd.date_range(first, last, freq="D")
+    return [
+        pd.Timestamp(dt.datetime.combine(day.date(), dt.time(hour)))
+        .tz_localize(LONDON, ambiguous=True, nonexistent="shift_forward")
+        .tz_convert("UTC")
+        for day in days
+        for hour in ROLLING_ISSUE_HOURS
+    ]
+
+
+def build_examples(
+    sources: Sources, targets: pd.Series, issues: Iterable[tuple[pd.Timestamp, pd.DatetimeIndex]]
+) -> pd.DataFrame:
     parts = []
-    for day in days:
-        issue_time = day_ahead_issue_time(day)
-        periods = london_day(day)
+    for issue_time, periods in issues:
         part = build_features(sources.as_of(issue_time), issue_time, periods)
         part.insert(0, "issue_time", issue_time)
         part["target"] = targets.reindex(periods).to_numpy()

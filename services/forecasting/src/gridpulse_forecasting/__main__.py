@@ -4,6 +4,7 @@ uv run --env-file ../../.env python -m gridpulse_forecasting check-db
 uv run --env-file ../../.env python -m gridpulse_forecasting build-dataset --from 2025-01-01 --to 2025-12-31
 uv run --env-file ../../.env python -m gridpulse_forecasting backtest --task demand --model seasonal-naive
 uv run --env-file ../../.env python -m gridpulse_forecasting backtest --task carbon --model lightgbm-cqr --report r.md
+uv run --env-file ../../.env python -m gridpulse_forecasting forecast --task all
 
 Set MLFLOW_TRACKING_URI (e.g. http://localhost:5000) to record backtests in MLflow.
 """
@@ -17,9 +18,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from gridpulse_forecasting import job
 from gridpulse_forecasting.backtest import run_backtest
-from gridpulse_forecasting.config import DatabaseSettings
-from gridpulse_forecasting.dataset import build_day_ahead
+from gridpulse_forecasting.config import DatabaseSettings, JobDatabaseSettings
+from gridpulse_forecasting.dataset import build_day_ahead, build_rolling, rolling_issue_times
 from gridpulse_forecasting.db import Database
 from gridpulse_forecasting.experiments import VALIDATION_LAST_DAY, VALIDATION_MONTHS, variant_models
 from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON
@@ -55,10 +57,14 @@ def input_window(first: dt.date, last: dt.date) -> tuple[dt.datetime, dt.datetim
     return start, end
 
 
-def load_examples(db: Database, task: Task, first: dt.date, last: dt.date) -> pd.DataFrame:
+def load_examples(db: Database, task: Task, first: dt.date, last: dt.date, mode: str = "day-ahead") -> pd.DataFrame:
+    """Day-ahead examples (issued 13:00 UK the day before) or rolling ones (every 6 hours, 48 hours ahead)."""
     start, end = input_window(first, last)
+    sources, targets = load_sources(db, start, end), task.load_targets(db, start, end)
+    if mode == "rolling":
+        return build_rolling(sources, targets, rolling_issue_times(first, last))
     days = [first + dt.timedelta(days=n) for n in range((last - first).days + 1)]
-    return build_day_ahead(load_sources(db, start, end), task.load_targets(db, start, end), days)
+    return build_day_ahead(sources, targets, days)
 
 
 def build_dataset(task: Task, first: dt.date, last: dt.date, output: str | None) -> int:
@@ -76,13 +82,25 @@ def build_dataset(task: Task, first: dt.date, last: dt.date, output: str | None)
 
 
 def backtest(
-    task: Task, model_name: str, months: int, first: dt.date, last: dt.date, report: str | None, stage: str
+    task: Task,
+    model_name: str,
+    months: int,
+    first: dt.date,
+    last: dt.date,
+    report: str | None,
+    stage: str,
+    mode: str,
 ) -> int:
-    """Rolling-origin backtest of one model against NESO and seasonal naive; logs to MLflow if configured."""
+    """Rolling-origin backtest of one model against NESO and seasonal naive; logs to MLflow if configured.
+
+    ``mode`` "rolling" backtests what the forecast job serves: the production model, every lead from 0 to 48 hours.
+    """
     db = Database(DatabaseSettings())
-    examples = load_examples(db, task, first, last)
+    examples = load_examples(db, task, first, last, mode)
     benchmark = task.load_benchmark(db, *input_window(first, last))
-    new_model = task.models[model_name]
+    new_model = task.production if mode == "rolling" and model_name == "lightgbm-cqr" else task.models[model_name]
+    if mode == "rolling":
+        model_name = f"{model_name}-rolling"
 
     result = run_backtest(new_model, examples, benchmark, months, task.naive_feature)
 
@@ -98,7 +116,8 @@ def backtest(
     print(f"MLflow run {run_id}" if run_id else "MLFLOW_TRACKING_URI not set: not logged")
     if report:
         today = pd.Timestamp.now(tz=LONDON).date()
-        Path(report).write_text(accuracy_report(result, task, model_name, run_id, today), encoding="utf-8")
+        text = accuracy_report(result, task, model_name, run_id, today, rolling=mode == "rolling")
+        Path(report).write_text(text, encoding="utf-8")
         print(f"Wrote {report}")
     return 0
 
@@ -126,6 +145,22 @@ def compare_variants(first: dt.date, only: list[str] | None) -> int:
     return 0
 
 
+def run_forecast(task_names: list[str], issue: str | None, first: dt.date) -> int:
+    """Forecast the next 48 hours for each task and store it, as the forecast job's own login (V7)."""
+    db = Database(JobDatabaseSettings(), read_only=False)
+    issue_time = pd.Timestamp(issue).tz_convert("UTC") if issue else job.issue_time_now()
+    for name in task_names:
+        rows = job.forecast(db, TASKS[name], issue_time, first)
+        stored = job.store(db, rows)
+        p50 = rows["p50"]
+        print(
+            f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z, "
+            f"P50 {p50.min():,.0f} to {p50.max():,.0f} {TASKS[name].unit}",
+            flush=True,
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="gridpulse_forecasting")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -148,14 +183,27 @@ def main(argv: list[str] | None = None) -> int:
         default="test",
         help="validation: choosing between designs (--to before the test months); test: the final score",
     )
+    test.add_argument(
+        "--mode",
+        choices=["day-ahead", "rolling"],
+        default="day-ahead",
+        help="day-ahead: issued 13:00 UK the day before; rolling: issued every 6 hours, 48 hours ahead",
+    )
     compare = commands.add_parser("compare-variants", help="backtest every experiment variant on the validation months")
     compare.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first UK day")
     compare.add_argument("--only", nargs="+", choices=sorted(variant_models()), help="run just these variants")
+    fc = commands.add_parser("forecast", help="train, forecast the next 48 hours and store it in model_forecast")
+    fc.add_argument("--task", choices=[*sorted(TASKS), "all"], default="all")
+    fc.add_argument("--issue-time", help="ISO timestamp with zone (default: the latest half-hour)")
+    fc.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first training day")
     args = parser.parse_args(argv)
     if args.command == "check-db":
         return check_db()
     if args.command == "build-dataset":
         return build_dataset(TASKS[args.task], args.first, args.last, args.output)
+    if args.command == "forecast":
+        names = sorted(TASKS) if args.task == "all" else [args.task]
+        return run_forecast(names, args.issue_time, args.first)
     if args.command == "compare-variants":
         return compare_variants(args.first, args.only)
     if args.command == "backtest":
@@ -163,7 +211,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.model not in task.models:
             parser.error(f"--model for {task.name}: choose from {', '.join(sorted(task.models))}")
         yesterday = pd.Timestamp.now(tz=LONDON).date() - dt.timedelta(days=1)
-        return backtest(task, args.model, args.months, args.first, args.last or yesterday, args.report, args.stage)
+        last = args.last or yesterday
+        return backtest(task, args.model, args.months, args.first, last, args.report, args.stage, args.mode)
     parser.error(f"unknown command {args.command}")
     return 2
 
