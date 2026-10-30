@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Protocol
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import ClassVar, Literal, Protocol
 
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+
+from gridpulse_forecasting.features import BASE_FEATURES
 
 
 class Forecaster(Protocol):
@@ -36,6 +40,45 @@ class SeasonalNaive:
         return {"lag_days": 7}
 
 
+Target = Literal["level", "ratio_to_last_week"]
+
+# The first configuration, set before any backtest. Variants are compared on a validation window that ends before
+# the test months, never on the test months themselves (ADR-0011).
+BASE_PARAMS: dict[str, str | int | float | bool] = {
+    "learning_rate": 0.03,
+    "num_leaves": 31,
+    "min_data_in_leaf": 100,  # leaves of at least ~2 days of half-hours: smooths over one-off days
+    "feature_fraction": 0.9,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "lambda_l2": 1.0,
+    "seed": 42,
+    "deterministic": True,  # with force_row_wise, the same data gives the same model on any machine
+    "force_row_wise": True,
+    "verbosity": -1,
+}
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    """What a LightGBM forecaster uses: which features, what it predicts, and its hyperparameters."""
+
+    features: tuple[str, ...] = tuple(BASE_FEATURES)
+    # "level": demand in MW. "ratio_to_last_week": demand divided by demand at the same time a week earlier, which
+    # trees handle better when the level drifts (trees can't extrapolate beyond the targets they were trained on).
+    target: Target = "level"
+    params: Mapping[str, str | int | float | bool] = field(default_factory=lambda: dict(BASE_PARAMS))
+    num_boost_round: int = 1_000
+
+    def describe(self) -> dict[str, str | int | float]:
+        return {
+            **{k: v for k, v in self.params.items() if not isinstance(v, bool)},
+            "num_boost_round": self.num_boost_round,
+            "target": self.target,
+            "n_features": len(self.features),
+        }
+
+
 class LightGBMQuantiles:
     """One gradient-boosted tree model per quantile: P10, P50 and P90 (ADR-0011).
 
@@ -44,49 +87,40 @@ class LightGBMQuantiles:
     """
 
     name = "lightgbm-quantile"
-
-    # Chosen once, before any backtest, and not tuned on the test months: tuning on them would overstate accuracy.
-    PARAMS: ClassVar[dict[str, str | int | float | bool]] = {
-        "learning_rate": 0.03,
-        "num_leaves": 31,
-        "min_data_in_leaf": 100,  # leaves of at least ~2 days of half-hours: smooths over one-off days
-        "feature_fraction": 0.9,
-        "bagging_fraction": 0.8,
-        "bagging_freq": 1,
-        "lambda_l2": 1.0,
-        "seed": 42,
-        "deterministic": True,  # with force_row_wise, the same data gives the same model on any machine
-        "force_row_wise": True,
-        "verbosity": -1,
-    }
-    NUM_BOOST_ROUND = 1_000
     QUANTILES: ClassVar[dict[str, float]] = {"p10": 0.1, "p50": 0.5, "p90": 0.9}
 
-    def __init__(self) -> None:
+    def __init__(self, config: ModelConfig | None = None) -> None:
+        self.config = config or ModelConfig()
         self._boosters: dict[str, lgb.Booster] = {}
 
     def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
-        data = lgb.Dataset(numeric(features), label=target.to_numpy(dtype="float64"), free_raw_data=False)
+        y = target.to_numpy(dtype="float64")
+        if self.config.target == "ratio_to_last_week":
+            y = y / last_week(features)
+        usable = np.isfinite(y)
+        data = lgb.Dataset(numeric(features[list(self.config.features)])[usable], label=y[usable], free_raw_data=False)
         self._boosters = {
-            label: lgb.train({**self.PARAMS, "objective": "quantile", "alpha": alpha}, data, self.NUM_BOOST_ROUND)
+            label: lgb.train(
+                {**self.config.params, "objective": "quantile", "alpha": alpha}, data, self.config.num_boost_round
+            )
             for label, alpha in self.QUANTILES.items()
         }
 
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
         if not self._boosters:
             raise RuntimeError("fit the model before predicting")
-        x = numeric(features)
+        x = numeric(features[list(self.config.features)])
         raw = np.column_stack([np.asarray(self._boosters[label].predict(x)) for label in self.QUANTILES])
+        if self.config.target == "ratio_to_last_week":
+            # Multiplying by a positive number keeps quantiles in order, so the result is still P10/P50/P90 in MW.
+            raw = raw * last_week(features)[:, None]
         # Separately trained quantile models can cross (P10 above P50) on odd inputs. Sorting each row is the
         # standard fix ("rearrangement", Chernozhukov et al. 2010): it can only move estimates closer to the truth.
         ordered = np.sort(raw, axis=1)
         return pd.DataFrame(ordered, columns=list(self.QUANTILES), index=features.index)
 
     def params(self) -> dict[str, str | int | float]:
-        return {
-            **{k: v for k, v in self.PARAMS.items() if not isinstance(v, bool)},
-            "num_boost_round": self.NUM_BOOST_ROUND,
-        }
+        return self.config.describe()
 
     def feature_importance(self) -> pd.Series:
         """Share of the median model's total split gain per feature: what the forecast leans on."""
@@ -113,9 +147,9 @@ class ConformalisedLightGBM:
     CALIBRATION_ROWS = 8 * 7 * 48  # the last 8 weeks of half-hours
     COVERAGE = 0.8
 
-    def __init__(self) -> None:
-        self._point = LightGBMQuantiles()
-        self._band = LightGBMQuantiles()
+    def __init__(self, config: ModelConfig | None = None) -> None:
+        self._point = LightGBMQuantiles(config)
+        self._band = LightGBMQuantiles(config)
         self._margin_mw: float | None = None
 
     def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
@@ -166,6 +200,12 @@ def conformal_margin(actual: np.ndarray, band: pd.DataFrame, coverage: float) ->
     # The ceil((n + 1) x coverage)-th smallest score; with too few scores for that, the largest.
     rank = min(len(scores), int(np.ceil((len(scores) + 1) * coverage)))
     return float(scores[rank - 1])
+
+
+def last_week(features: pd.DataFrame) -> np.ndarray:
+    """Demand at the same UK clock time a week earlier, else two weeks earlier: the ratio target's baseline."""
+    baseline = features["demand_lag_7d"].fillna(features["demand_lag_14d"]).to_numpy(dtype="float64")
+    return np.where(baseline > 0, baseline, np.nan)
 
 
 def numeric(features: pd.DataFrame) -> pd.DataFrame:

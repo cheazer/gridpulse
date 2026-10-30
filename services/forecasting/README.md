@@ -102,3 +102,10 @@ The model halves seasonal naive's error but does **not** beat NESO yet; it trail
 at midday (12:00-16:00 UK: 6.6% against NESO's 4.4%), when embedded solar, invisible to the transmission system,
 cuts national demand. NESO forecasts embedded solar and wind directly; this model only sees national-average
 radiation, and leans mostly on past demand.
+
+**Trying to close the gap** ([docs/results/demand-model-experiments.md](../../docs/results/demand-model-experiments.md)).
+Ten variants were compared on a validation window (Jul to Sep 2025) before the test months, so the test months were
+scored only once: per-location solar, a ratio-to-last-week target, week-on-week changes in demand and weather, and
+four hyperparameter settings. None beat the first model by more than noise, so it stays. Run them with
+`compare-variants`; each is logged to MLflow with `stage=validation`. More history and a "NESO + correction" model
+are left for Phase 5.
