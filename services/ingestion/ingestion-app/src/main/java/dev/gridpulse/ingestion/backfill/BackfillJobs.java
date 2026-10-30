@@ -103,18 +103,40 @@ public class BackfillJobs {
   BackfillJob openMeteoDayAheadForecasts(
       OpenMeteoClient client, OpenMeteoMapper mapper, OpenMeteoProperties properties) {
     // What the forecast was a day ahead: the honest training features (ADR-0008).
-    return new ChunkedJob(
-        "open-meteo-day-ahead-forecasts",
-        Period.ofMonths(1),
-        (from, to, now) ->
-            mapper.dayAheadForecasts(
-                properties.locations(),
-                client.dayAheadForecasts(properties.locations(), from, to.minusDays(1)),
-                now));
+    return previousRunForecasts("open-meteo-day-ahead-forecasts", 1, client, mapper, properties);
   }
 
   @Bean
   @Order(8)
+  BackfillJob openMeteoTwoDayAheadForecasts(
+      OpenMeteoClient client, OpenMeteoMapper mapper, OpenMeteoProperties properties) {
+    // The run two days earlier. A day-ahead forecast made at 13:00 on D-1 can't use the day-1 run
+    // for D's evening hours (it is issued after 13:00), so without this revision those hours would
+    // have no weather that was known in time (ADR-0011).
+    return previousRunForecasts(
+        "open-meteo-two-day-ahead-forecasts", 2, client, mapper, properties);
+  }
+
+  private static ChunkedJob previousRunForecasts(
+      String name,
+      int daysEarlier,
+      OpenMeteoClient client,
+      OpenMeteoMapper mapper,
+      OpenMeteoProperties properties) {
+    return new ChunkedJob(
+        name,
+        Period.ofMonths(1),
+        (from, to, now) ->
+            mapper.previousRunForecasts(
+                properties.locations(),
+                client.previousRunForecasts(
+                    properties.locations(), daysEarlier, from, to.minusDays(1)),
+                daysEarlier,
+                now));
+  }
+
+  @Bean
+  @Order(9)
   BackfillJob nesoHistoricDemand(NesoClient client, NesoMapper mapper) {
     // One CSV per year; a chunk downloads each year it touches and keeps its own dates.
     return new ChunkedJob(

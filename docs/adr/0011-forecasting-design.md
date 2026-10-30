@@ -63,3 +63,8 @@ forecast would have been made. In our data that has three concrete forms:
   half-hour, not its day-ahead revision, so comparisons over that period favour NESO and are labelled that way.
 - Forecasts in a table are as fresh as the last job run; Phase 4 schedules it (CronJob) and alerts if it goes stale.
 - Regional carbon intensity is not modelled; Phase 3 uses NESO's regional 48-hour forecasts, which we ingest.
+- **Historical weather needs two revisions** (found in step 2.2). The previous-runs archive's ~24-hour-ahead run for
+  D's evening hours (18:00-23:00 UTC) is issued after 13:00 on D-1, so under the cut-off it doesn't exist yet. The
+  backfill therefore also loads the ~48-hour-ahead run (`open-meteo-two-day-ahead-forecasts`), and the as-of rule
+  picks whichever revision was the latest by the cut-off. Those forecasts are older than what NESO had at 13:00,
+  which can only work against our model.

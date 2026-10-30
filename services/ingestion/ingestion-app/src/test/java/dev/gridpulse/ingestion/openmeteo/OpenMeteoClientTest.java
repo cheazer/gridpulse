@@ -7,6 +7,8 @@ import dev.gridpulse.ingestion.testing.FixtureServer;
 import java.time.LocalDate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,16 +44,27 @@ class OpenMeteoClientTest {
                     .contains("&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT"));
   }
 
-  @Test
-  void dayAheadForecastsMapThePreviousRunVariablesOntoTheUsualShape() {
+  @ParameterizedTest
+  @ValueSource(ints = {1, 2})
+  void previousRunForecastsMapTheLeadVariablesOntoTheUsualShape(int daysEarlier) {
     var responses =
-        client.dayAheadForecasts(
-            LOCATIONS, LocalDate.parse("2024-10-29"), LocalDate.parse("2024-10-30"));
+        client.previousRunForecasts(
+            LOCATIONS, daysEarlier, LocalDate.parse("2024-10-29"), LocalDate.parse("2024-10-30"));
 
     assertThat(responses).hasSize(8);
-    // The _previous_day1 suffix is stripped, so every variable is populated, not null.
+    // The _previous_dayN suffix is stripped, so every variable is populated, not null.
     assertThat(responses.getFirst().hourly().temperature2m()).hasSize(48).doesNotContainNull();
     assertThat(responses.getFirst().hourly().windSpeed100m()).doesNotContainNull();
+  }
+
+  @Test
+  void runsFromDifferentDaysForecastDifferentValues() {
+    LocalDate day = LocalDate.parse("2024-10-29");
+    var oneDay = client.previousRunForecasts(LOCATIONS, 1, day, day.plusDays(1));
+    var twoDays = client.previousRunForecasts(LOCATIONS, 2, day, day.plusDays(1));
+
+    assertThat(twoDays.getFirst().hourly().temperature2m())
+        .isNotEqualTo(oneDay.getFirst().hourly().temperature2m());
   }
 
   @Test

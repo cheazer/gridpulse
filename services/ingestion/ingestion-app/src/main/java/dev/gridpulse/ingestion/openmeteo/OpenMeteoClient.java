@@ -26,15 +26,21 @@ public class OpenMeteoClient {
   static final String COMMON =
       "&hourly=" + VARIABLES + "&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT";
 
-  /** The previous-runs API names each variable with the forecast's lead, e.g. a day earlier. */
-  static final String PREVIOUS_DAY = "_previous_day1";
+  /**
+   * The previous-runs API names each variable with how many days earlier the run was, e.g. {@code
+   * temperature_2m_previous_day2}.
+   */
+  static String previousDaySuffix(int daysEarlier) {
+    return "_previous_day" + daysEarlier;
+  }
 
-  static final String PREVIOUS_DAY_COMMON =
-      "&hourly="
-          + Arrays.stream(VARIABLES.split(","))
-              .map(v -> v + PREVIOUS_DAY)
-              .collect(Collectors.joining(","))
-          + "&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT";
+  static String previousRunsCommon(int daysEarlier) {
+    return "&hourly="
+        + Arrays.stream(VARIABLES.split(","))
+            .map(v -> v + previousDaySuffix(daysEarlier))
+            .collect(Collectors.joining(","))
+        + "&wind_speed_unit=ms&timeformat=unixtime&timezone=GMT";
+  }
 
   private final HttpSource forecastApi;
   private final HttpSource archiveApi;
@@ -72,20 +78,26 @@ public class OpenMeteoClient {
   }
 
   /**
-   * Archived day-ahead forecasts for whole UTC days, {@code start} to {@code end} inclusive: each
-   * hour as the model run about a day earlier forecast it.
+   * Archived forecasts for whole UTC days, {@code start} to {@code end} inclusive: each hour as the
+   * model run about {@code daysEarlier} days before it forecast it.
    */
-  public List<LocationResponse> dayAheadForecasts(
-      List<Location> locations, LocalDate start, LocalDate end) {
+  public List<LocationResponse> previousRunForecasts(
+      List<Location> locations, int daysEarlier, LocalDate start, LocalDate end) {
     String query =
-        coordinates(locations) + PREVIOUS_DAY_COMMON + "&start_date=" + start + "&end_date=" + end;
+        coordinates(locations)
+            + previousRunsCommon(daysEarlier)
+            + "&start_date="
+            + start
+            + "&end_date="
+            + end;
     JsonNode body = previousRunsApi.get("/forecast" + query, JsonNode.class);
     // Strip the lead suffix so the response maps onto the same shape as live forecasts.
+    String suffix = previousDaySuffix(daysEarlier);
     for (JsonNode location : body.isArray() ? body.valueStream().toList() : List.of(body)) {
       ObjectNode hourly = (ObjectNode) location.get("hourly");
       for (String name : List.copyOf(hourly.propertyNames())) {
-        if (name.endsWith(PREVIOUS_DAY)) {
-          hourly.set(name.substring(0, name.length() - PREVIOUS_DAY.length()), hourly.remove(name));
+        if (name.endsWith(suffix)) {
+          hourly.set(name.substring(0, name.length() - suffix.length()), hourly.remove(name));
         }
       }
     }

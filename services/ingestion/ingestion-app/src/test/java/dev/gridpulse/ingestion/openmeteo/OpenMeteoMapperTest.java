@@ -19,6 +19,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /** Runs the recorded Open-Meteo responses through the mapper. Poll time: 2026-10-28T22:24:36Z. */
 class OpenMeteoMapperTest {
@@ -81,20 +83,23 @@ class OpenMeteoMapperTest {
             });
   }
 
-  @Test
-  void dayAheadForecastsAreRevisionsIssuedInTheBucketADayEarlier() {
+  @ParameterizedTest
+  @CsvSource({"1, 2024-10-28T00:00:00Z", "2, 2024-10-27T00:00:00Z"})
+  void previousRunForecastsAreRevisionsIssuedInTheBucketThatManyDaysEarlier(
+      int daysEarlier, Instant expectedIssuedAt) {
     List<GridEvent> events =
-        mapper.dayAheadForecasts(LOCATIONS, OpenMeteoFixtures.dayAheadForecasts(), POLLED_AT);
+        mapper.previousRunForecasts(
+            LOCATIONS, OpenMeteoFixtures.previousRunForecasts(daysEarlier), daysEarlier, POLLED_AT);
 
     assertThat(events).hasSize(48 * 8);
-    // 05:00 on 29 Oct 2024 was forecast a day earlier: the 6-hour bucket containing 05:00 on the
-    // 28th.
+    // 05:00 on 29 Oct 2024 forecast N days earlier: the 6-hour bucket containing 05:00 N days
+    // before.
     GridEvent fiveAm =
         events.stream()
             .filter(e -> e.validFrom().equals(Instant.parse("2024-10-29T05:00:00Z")))
             .findFirst()
             .orElseThrow();
-    assertThat(fiveAm.issuedAt()).isEqualTo(Instant.parse("2024-10-28T00:00:00Z"));
+    assertThat(fiveAm.issuedAt()).isEqualTo(expectedIssuedAt);
     assertThat(events).allSatisfy(e -> assertThat(e.issuedAt()).isBefore(e.validFrom()));
 
     var codec = new EventCodec();
