@@ -4,7 +4,7 @@ Python 3.12 service that forecasts GB national demand and carbon intensity 24–
 NESO's day-ahead forecast ([ADR-0010](../../docs/adr/0010-day-ahead-benchmark.md)). Design:
 [ADR-0011](../../docs/adr/0011-forecasting-design.md).
 
-Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder, the backtest harness and the first demand model.
+Phase 2 builds it in steps; so far it holds configuration, read-only database access, the as-of dataset builder, the backtest harness, and day-ahead models for demand and carbon intensity.
 
 ## Develop
 
@@ -59,7 +59,7 @@ uv run --env-file ../../.env python -m gridpulse_forecasting build-dataset --fro
 ## Backtesting
 
 ```bash
-uv run --env-file ../../.env python -m gridpulse_forecasting backtest --model seasonal-naive
+uv run --env-file ../../.env python -m gridpulse_forecasting backtest --task demand --model seasonal-naive
 ```
 
 A rolling-origin backtest ([backtest.py](src/gridpulse_forecasting/backtest.py)) over the last 12 complete months:
@@ -109,3 +109,25 @@ scored only once: per-location solar, a ratio-to-last-week target, week-on-week 
 four hyperparameter settings. None beat the first model by more than noise, so it stays. Run them with
 `compare-variants`; each is logged to MLflow with `stage=validation`. More history and a "NESO + correction" model
 are left for Phase 5.
+
+## The carbon-intensity model
+
+`backtest --task carbon --model lightgbm-cqr`: the same pipeline, model and calibration, for national (GB) carbon
+intensity in gCO2/kWh. A task ([tasks.py](src/gridpulse_forecasting/tasks.py)) bundles what differs: the target,
+unit, benchmark, seasonal-naive lag and MLflow experiment (`day-ahead-carbon`). Inputs are the demand model's plus
+carbon intensity's own history (published an hour after each half-hour, like INDO), set once and not tuned.
+
+**Results** ([docs/results/carbon-accuracy.md](../../docs/results/carbon-accuracy.md), Oct 2025 to Sep 2026):
+
+| | MAE | MAPE | P10-P90 coverage |
+|---|---|---|---|
+| GridPulse day-ahead | 23.2 g/kWh | 21.8% | 80% |
+| NESO *final* forecast (not day-ahead) | 9.9 g/kWh | 9.4% | - |
+| Seasonal naive | 54.3 g/kWh | 53.6% | - |
+
+- **The NESO number is a ceiling, not a rival.** The history holds only NESO's final forecast for each half-hour,
+  made shortly before it; its day-ahead revisions are recorded only from late October 2026. Report and PR say so.
+- **MAE leads, not MAPE.** Carbon intensity can fall towards zero, where percentage errors explode. One zero actual
+  (6 Aug 2026, physically implausible for GB) is treated as missing.
+- **Wind drives it**: 100 m wind speed is the model's largest input (27% of split gain), because wind output decides
+  how much gas must run.

@@ -41,7 +41,7 @@ def test_scrambling_before_the_issue_time_does_change_features(day: dt.date) -> 
     scrambled = build_day_ahead(synthetic.scramble_after(source, a_week_earlier), targets, [day])
 
     changed = [f for f in FEATURES if not honest[f].equals(scrambled[f])]
-    assert {"demand_lag_2d", "demand_latest", "demand_mean_24h", "temperature_c"} <= set(changed)
+    assert {"demand_lag_2d", "demand_latest", "demand_mean_24h", "temperature_c", "carbon_latest"} <= set(changed)
 
 
 def test_targets_are_labels_not_inputs() -> None:
@@ -52,4 +52,4 @@ def test_targets_are_labels_not_inputs() -> None:
     shifted = build_day_ahead(source, synthetic.targets(source) + 1_000, [day])
 
     pd.testing.assert_frame_equal(honest[FEATURES], shifted[FEATURES])
-    assert (shifted["target_mw"] - honest["target_mw"] == 1_000).all()
+    assert (shifted["target"] - honest["target"] == 1_000).all()

@@ -64,7 +64,7 @@ def test_target_is_nan_where_the_actual_is_not_known() -> None:
 
     examples = build_day_ahead(source, synthetic.targets(source), [beyond_the_data])
 
-    assert examples["target_mw"].isna().all()
+    assert examples["target"].isna().all()
 
 
 # ------------------------------------------------------------------ calendar
@@ -101,7 +101,7 @@ def test_same_wall_time_follows_uk_clocks_across_a_clock_change() -> None:
 
 def test_demand_lags_take_the_same_uk_clock_time(examples: pd.DataFrame) -> None:
     row = at(examples, "2025-03-20T18:00Z")
-    actual_indo = row["target_mw"] - 7.0  # synthetic actuals are INDO + 7
+    actual_indo = row["target"] - 7.0  # synthetic actuals are INDO + 7
     # One synthetic MW per half-hour: 7 days of GMT is 336 half-hours earlier, 2 days is 96, 14 days is 672.
     assert (row["demand_lag_2d"], row["demand_lag_7d"], row["demand_lag_14d"]) == (
         actual_indo - 96,
@@ -180,3 +180,16 @@ def test_weather_change_compares_with_last_weeks_weather_as_finally_forecast(exa
     assert at(examples, "2025-03-20T18:00Z")["temperature_change_7d_c"] == pytest.approx(14.8 - 12.4)
     # Synthetic radiation depends only on the hour, which is the same a week earlier in GMT.
     assert (examples["solar_radiation_change_7d_wm2"] == 0).all()
+
+
+# ------------------------------------------------------------------ carbon intensity
+
+
+def test_carbon_history_uses_the_same_lag_rules_as_demand(examples: pd.DataFrame) -> None:
+    carbon = synthetic.sources().carbon.set_index("valid_from")["carbon_gco2_per_kwh"]
+    row = at(examples, "2025-03-20T18:00Z")
+
+    assert row["carbon_lag_7d"] == carbon[pd.Timestamp("2025-03-13T18:00Z")]
+    assert row["carbon_lag_2d"] == carbon[pd.Timestamp("2025-03-18T18:00Z")]
+    # Published an hour after the half-hour ends, like INDO: 11:30-12:00 is the last one out by 13:00.
+    assert row["carbon_latest"] == carbon[pd.Timestamp("2025-03-19T11:30Z")]

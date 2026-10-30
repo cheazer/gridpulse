@@ -23,10 +23,10 @@ def examples(first: str = "2025-01-01", last: str = "2025-04-10") -> pd.DataFram
         part = pd.DataFrame({"target_time": periods, "issue_time": day_ahead_issue_time(day)})
         parts.append(part)
     frame = pd.concat(parts, ignore_index=True)
-    frame["target_mw"] = 25_000 + 5_000 * np.sin(np.arange(len(frame)) * 2 * np.pi / 48)
+    frame["target"] = 25_000 + 5_000 * np.sin(np.arange(len(frame)) * 2 * np.pi / 48)
     for feature in FEATURES:
         frame[feature] = 0.0
-    frame["demand_lag_7d"] = frame["target_mw"] + rng.normal(0, 500, len(frame))
+    frame["demand_lag_7d"] = frame["target"] + rng.normal(0, 500, len(frame))
     return frame
 
 
@@ -68,7 +68,7 @@ def test_training_only_uses_actuals_published_by_the_refit_time() -> None:
 
 def test_each_month_refits_a_fresh_model_on_what_was_known_then() -> None:
     frame = examples()
-    neso = frame.set_index("target_time")["target_mw"] * 1.02
+    neso = frame.set_index("target_time")["target"] * 1.02
 
     result = run_backtest(Spy, frame, neso, months=2)
 
@@ -84,7 +84,7 @@ def test_each_month_refits_a_fresh_model_on_what_was_known_then() -> None:
 
 def test_predictions_cover_every_half_hour_of_the_test_months() -> None:
     frame = examples()
-    result = run_backtest(Spy, frame, frame.set_index("target_time")["target_mw"], months=2)
+    result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=2)
 
     by_fold = result.predictions.groupby("fold").size()
     assert by_fold.to_dict() == {"2025-02": 28 * 48, "2025-03": 31 * 48 - 2}  # 30 March has 46 periods
@@ -92,7 +92,7 @@ def test_predictions_cover_every_half_hour_of_the_test_months() -> None:
 
 def test_every_forecast_is_scored_on_the_same_half_hours() -> None:
     frame = examples()
-    neso = frame.set_index("target_time")["target_mw"] * 1.02
+    neso = frame.set_index("target_time")["target"] * 1.02
     neso.iloc[-24 * 48 :] = np.nan  # NESO missing for part of the last month
 
     result = run_backtest(Spy, frame, neso, months=2)
@@ -111,22 +111,31 @@ def test_no_overlap_with_neso_is_an_error_not_an_empty_score() -> None:
 
 def test_quantile_forecasts_get_pinball_loss_and_coverage() -> None:
     frame = examples()
-    result = run_backtest(Spy, frame, frame.set_index("target_time")["target_mw"], months=1)
+    result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=1)
 
     model = result.summary.loc["model"]
     # The synthetic actuals run from 20,000 to 30,000 MW, so the spy's interval contains all of them.
     assert model["coverage_p10_p90"] == pytest.approx(1.0)
-    assert {"pinball_p10_mw", "pinball_p50_mw", "pinball_p90_mw"} <= set(result.summary.columns)
+    assert {"pinball_p10", "pinball_p50", "pinball_p90"} <= set(result.summary.columns)
     assert np.isnan(result.summary.loc["neso", "coverage_p10_p90"])
 
 
 def test_seasonal_naive_as_the_model_matches_the_seasonal_naive_benchmark() -> None:
     frame = examples()
 
-    result = run_backtest(SeasonalNaive, frame, frame.set_index("target_time")["target_mw"], months=2)
+    result = run_backtest(SeasonalNaive, frame, frame.set_index("target_time")["target"], months=2)
 
     assert result.summary.loc["model", "mape_pct"] == pytest.approx(result.summary.loc["seasonal_naive", "mape_pct"])
     common = result.predictions
-    expected = point_metrics(common["actual_mw"], common["seasonal_naive"])["mape_pct"]
+    expected = point_metrics(common["actual"], common["seasonal_naive"])["mape_pct"]
     assert result.summary.loc["seasonal_naive", "mape_pct"] == pytest.approx(expected)
     assert list(result.by_month.index) == ["2025-02", "2025-03"]
+
+
+def test_the_naive_benchmark_comes_from_the_tasks_own_lag() -> None:
+    frame = examples()
+    frame["carbon_lag_7d"] = 123.0
+
+    result = run_backtest(Spy, frame, frame.set_index("target_time")["target"], months=1, naive_feature="carbon_lag_7d")
+
+    assert (result.predictions["seasonal_naive"] == 123.0).all()

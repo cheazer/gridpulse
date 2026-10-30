@@ -1,8 +1,8 @@
 # Day-ahead demand forecast accuracy
 
-Generated 2026-10-30 by `python -m gridpulse_forecasting backtest --model lightgbm-cqr --report ...` (MLflow run `d3e6efe1b0e14828ba7f75465870299b`).
+Generated 2026-10-30 by `python -m gridpulse_forecasting backtest --task demand --model lightgbm-cqr --report ...` (MLflow run `8a271ef362e14d988e01e5a18dc2ef34`).
 
-Rolling-origin backtest over **2025-10 to 2026-09** (12 months): a fresh model each month, fitted on what was known at the month's first issue time, forecasting each day as of **13:00 UK time the day before**, the same cut-off as NESO's day-ahead forecast (ADR-0010, ADR-0011). All forecasts are scored on the same **17,520 half-hours**; actuals are NESO's settled national demand (ND), or Elexon's initial outturn where ND isn't published yet.
+Rolling-origin backtest over **2025-10 to 2026-09** (12 months): a fresh model each month, fitted on what was known at the month's first issue time, forecasting each day as of **13:00 UK time the day before** (ADR-0010, ADR-0011). All forecasts are scored on the same **17,520 half-hours**. Actuals are NESO's settled national demand (ND), or Elexon's initial outturn where ND isn't published yet. NESO's forecast is its day-ahead NDF as published by 13:00 UK time the day before: the same information cut-off as ours (ADR-0010).
 
 ## Headline
 

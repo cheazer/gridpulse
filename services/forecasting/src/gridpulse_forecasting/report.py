@@ -3,45 +3,55 @@
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import pandas as pd
 
 from gridpulse_forecasting.backtest import MODEL, NAIVE, NESO, BacktestResult
 from gridpulse_forecasting.features import LONDON
+from gridpulse_forecasting.tasks import Task
 
-LABELS = {MODEL: "GridPulse", NESO: "NESO day-ahead", NAIVE: "Seasonal naive"}
+POINT = {MODEL: f"{MODEL}_p50", NESO: NESO, NAIVE: NAIVE}
 
 
-def accuracy_report(result: BacktestResult, model_name: str, run_id: str | None, generated: dt.date) -> str:
+def accuracy_report(result: BacktestResult, task: Task, model_name: str, run_id: str | None, generated: dt.date) -> str:
     p = result.predictions
     summary = result.summary
-    half_hours = len(p.dropna(subset=["actual_mw", f"{MODEL}_p50", NESO, NAIVE]))
+    common = p.dropna(subset=["actual", *POINT.values()])
     folds = sorted(p["fold"].unique())
+    labels = {MODEL: "GridPulse", NESO: task.benchmark_label, NAIVE: "Seasonal naive"}
+    # A whole number of MW reads well; carbon intensity in the tens of g/kWh needs a decimal.
+    amount = "{:,.0f} " + task.unit if task.unit == "MW" else "{:,.1f} " + task.unit
+    signed = amount.replace("{:,", "{:+,")
+    # MAPE leads for demand, which never nears zero; MAE leads for carbon intensity, which can.
+    by_mae = task.name == "carbon"
+
     lines = [
-        "# Day-ahead demand forecast accuracy",
+        f"# {task.title}",
         "",
         f"Generated {generated:%Y-%m-%d} by "
-        f"`python -m gridpulse_forecasting backtest --model {model_name} --report ...`"
+        f"`python -m gridpulse_forecasting backtest --task {task.name} --model {model_name} --report ...`"
         + (f" (MLflow run `{run_id}`)." if run_id else "."),
         "",
         f"Rolling-origin backtest over **{folds[0]} to {folds[-1]}** ({len(folds)} months): a fresh model each month, "
         "fitted on what was known at the month's first issue time, forecasting each day as of **13:00 UK time the "
-        "day before**, the same cut-off as NESO's day-ahead forecast (ADR-0010, ADR-0011). All forecasts are scored "
-        f"on the same **{half_hours:,} half-hours**; actuals are NESO's settled national "
-        "demand (ND), or Elexon's initial outturn where ND isn't published yet.",
+        "day before** (ADR-0010, ADR-0011). All forecasts are scored on the same "
+        f"**{len(common):,} half-hours**. {task.about}",
         "",
         "## Headline",
         "",
         table(
-            ["Forecast", "MAPE", "MAE", "RMSE", "Bias"],
+            ["Forecast", "MAE", "MAPE", "RMSE", "Bias"] if by_mae else ["Forecast", "MAPE", "MAE", "RMSE", "Bias"],
             [
                 [
-                    LABELS[str(name)],
-                    f"{row['mape_pct']:.2f}%",
-                    f"{row['mae_mw']:,.0f} MW",
-                    f"{row['rmse_mw']:,.0f} MW",
-                    f"{row['bias_mw']:+,.0f} MW",
+                    labels[str(name)],
+                    *(
+                        [amount.format(row["mae"]), f"{row['mape_pct']:.2f}%"]
+                        if by_mae
+                        else [f"{row['mape_pct']:.2f}%", amount.format(row["mae"])]
+                    ),
+                    amount.format(row["rmse"]),
+                    signed.format(row["bias"]),
                 ]
                 for name, row in summary.iterrows()
             ],
@@ -61,28 +71,29 @@ def accuracy_report(result: BacktestResult, model_name: str, run_id: str | None,
                 [
                     [
                         f"{model['coverage_p10_p90']:.1%}",
-                        f"{(p[f'{MODEL}_p90'] - p[f'{MODEL}_p10']).mean():,.0f} MW",
-                        f"{model['pinball_p10_mw']:,.0f} MW",
-                        f"{model['pinball_p50_mw']:,.0f} MW",
-                        f"{model['pinball_p90_mw']:,.0f} MW",
+                        amount.format((p[f"{MODEL}_p90"] - p[f"{MODEL}_p10"]).mean()),
+                        amount.format(model["pinball_p10"]),
+                        amount.format(model["pinball_p50"]),
+                        amount.format(model["pinball_p90"]),
                     ]
                 ],
             ),
         ]
 
-    by_month = result.by_month
+    metric = "MAE" if by_mae else "MAPE"
+    cell = amount.format if by_mae else "{:.2f}%".format
+    month = common["fold"]
+    hour = common["target_time"].dt.tz_convert(LONDON).dt.hour
+    block = (hour // 4 * 4).map(lambda h: f"{h:02d}:00-{h + 4:02d}:00")
     lines += [
         "",
-        "## MAPE by month",
+        f"## {metric} by month",
         "",
-        table(
-            ["Month", *(LABELS[c] for c in by_month.columns)],
-            [[month, *(f"{v:.2f}%" for v in row)] for month, row in by_month.iterrows()],
-        ),
+        grouped(common, month, "Month", labels, by_mae, cell),
         "",
-        "## MAPE by time of day (UK)",
+        f"## {metric} by time of day (UK)",
         "",
-        by_time_of_day(p),
+        grouped(common, block, "UK time", labels, by_mae, cell),
     ]
 
     importance = getattr(result.final_model, "feature_importance", None)
@@ -99,18 +110,25 @@ def accuracy_report(result: BacktestResult, model_name: str, run_id: str | None,
     return "\n".join(lines) + "\n"
 
 
-def by_time_of_day(p: pd.DataFrame) -> str:
-    common = p.dropna(subset=["actual_mw", f"{MODEL}_p50", NESO, NAIVE])
-    hour = common["target_time"].dt.tz_convert(LONDON).dt.hour
-    block = (hour // 4 * 4).map(lambda h: f"{h:02d}:00-{h + 4:02d}:00")
-    columns = {MODEL: f"{MODEL}_p50", NESO: NESO, NAIVE: NAIVE}
-    ape = pd.DataFrame(
-        {name: (common[col] - common["actual_mw"]).abs() / common["actual_mw"] * 100 for name, col in columns.items()}
+def grouped(
+    common: pd.DataFrame,
+    key: pd.Series,
+    heading: str,
+    labels: dict[str, str],
+    by_mae: bool,
+    cell: Callable[[float], str],
+) -> str:
+    """MAE or MAPE of every forecast per group (month, time of day), on the common half-hours."""
+    errors = pd.DataFrame(
+        {
+            name: (common[column] - common["actual"]).abs() / (1 if by_mae else common["actual"] / 100)
+            for name, column in POINT.items()
+        }
     )
-    mape = ape.groupby(block).mean()
+    means = errors.groupby(key).mean()
     return table(
-        ["UK time", *(LABELS[c] for c in mape.columns)],
-        [[str(block_name), *(f"{v:.2f}%" for v in row)] for block_name, row in mape.iterrows()],
+        [heading, *(labels[c] for c in means.columns)],
+        [[str(group), *(cell(v) for v in row)] for group, row in means.iterrows()],
     )
 
 

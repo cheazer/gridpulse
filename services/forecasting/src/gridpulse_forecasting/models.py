@@ -26,15 +26,18 @@ class Forecaster(Protocol):
 
 
 class SeasonalNaive:
-    """Demand at the same UK clock time a week earlier: the floor any model must clear (ADR-0010)."""
+    """The value at the same UK clock time a week earlier: the floor any model must clear (ADR-0010)."""
 
     name = "seasonal-naive"
+
+    def __init__(self, lag_feature: str = "demand_lag_7d") -> None:
+        self.lag_feature = lag_feature
 
     def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
         """Nothing to learn."""
 
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
-        return pd.DataFrame({"p50": features["demand_lag_7d"]}, index=features.index)
+        return pd.DataFrame({"p50": features[self.lag_feature]}, index=features.index)
 
     def params(self) -> dict[str, str | int | float]:
         return {"lag_days": 7}
@@ -150,14 +153,14 @@ class ConformalisedLightGBM:
     def __init__(self, config: ModelConfig | None = None) -> None:
         self._point = LightGBMQuantiles(config)
         self._band = LightGBMQuantiles(config)
-        self._margin_mw: float | None = None
+        self._margin: float | None = None
 
     def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
         if len(features) <= 2 * self.CALIBRATION_ROWS:
             raise ValueError(f"need more than {2 * self.CALIBRATION_ROWS} rows to hold out a calibration window")
         proper, calibration = slice(None, -self.CALIBRATION_ROWS), slice(-self.CALIBRATION_ROWS, None)
         self._band.fit(features.iloc[proper], target.iloc[proper])
-        self._margin_mw = conformal_margin(
+        self._margin = conformal_margin(
             target.iloc[calibration].to_numpy(dtype="float64"),
             self._band.predict(features.iloc[calibration]),
             self.COVERAGE,
@@ -165,14 +168,14 @@ class ConformalisedLightGBM:
         self._point.fit(features, target)
 
     def predict(self, features: pd.DataFrame) -> pd.DataFrame:
-        if self._margin_mw is None:
+        if self._margin is None:
             raise RuntimeError("fit the model before predicting")
         band = self._band.predict(features)
         raw = np.column_stack(
             [
-                band["p10"] - self._margin_mw,
+                band["p10"] - self._margin,
                 self._point.predict(features)["p50"],
-                band["p90"] + self._margin_mw,
+                band["p90"] + self._margin,
             ]
         )
         return pd.DataFrame(np.sort(raw, axis=1), columns=["p10", "p50", "p90"], index=features.index)
@@ -184,9 +187,9 @@ class ConformalisedLightGBM:
         return self._point.feature_importance()
 
     @property
-    def margin_mw(self) -> float | None:
+    def margin(self) -> float | None:
         """How much calibration widened each side of the band (negative: narrowed)."""
-        return self._margin_mw
+        return self._margin
 
 
 def conformal_margin(actual: np.ndarray, band: pd.DataFrame, coverage: float) -> float:

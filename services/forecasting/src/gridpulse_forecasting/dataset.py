@@ -31,7 +31,7 @@ def london_day(day: dt.date) -> pd.DatetimeIndex:
 def build_day_ahead(sources: Sources, targets: pd.Series, days: Iterable[dt.date]) -> pd.DataFrame:
     """Day-ahead examples for each UK day in ``days``: features as of 13:00 the day before, and the actual demand.
 
-    ``target_mw`` is NaN where the actual isn't known yet, so the same function builds rows to predict.
+    ``target`` is NaN where the actual isn't known yet, so the same function builds rows to predict.
     """
     parts = []
     for day in days:
@@ -39,7 +39,7 @@ def build_day_ahead(sources: Sources, targets: pd.Series, days: Iterable[dt.date
         periods = london_day(day)
         part = build_features(sources.as_of(issue_time), issue_time, periods)
         part.insert(0, "issue_time", issue_time)
-        part["target_mw"] = targets.reindex(periods).to_numpy()
+        part["target"] = targets.reindex(periods).to_numpy()
         parts.append(part)
     if not parts:
         return pd.DataFrame()
