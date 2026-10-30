@@ -1,0 +1,26 @@
+# Machine learning services: the MLflow tracking server and model registry (ADR-0011).
+
+services:
+  mlflow:
+    build:
+      context: ../mlflow
+    depends_on:
+      db-users:
+        condition: service_completed_successfully
+    environment:
+      # Run metadata lives in its own 'mlflow' database in the TimescaleDB container, as its own login;
+      # artifacts (models, tables) go to a volume. The password is URL-safe (see .env.example).
+      MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:${MLFLOW_DB_PASSWORD:?add MLFLOW_DB_PASSWORD to .env (see .env.example)}@timescaledb:5432/mlflow
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  mlflow-artifacts:

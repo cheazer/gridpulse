@@ -3,9 +3,9 @@ name: db
 on:
   push:
     branches: [main]
-    paths: ["db/**", "deploy/compose/**", "compose.yaml", ".github/workflows/db.yml"]
+    paths: ["db/**", "deploy/compose/**", "deploy/mlflow/**", "compose.yaml", ".github/workflows/db.yml"]
   pull_request:
-    paths: ["db/**", "deploy/compose/**", "compose.yaml", ".github/workflows/db.yml"]
+    paths: ["db/**", "deploy/compose/**", "deploy/mlflow/**", "compose.yaml", ".github/workflows/db.yml"]
 
 permissions:
   contents: read
@@ -17,9 +17,16 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create .env with throwaway passwords
         run: |
-          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
       - name: Migrate and run schema assertions
         run: bash db/tests/run.sh
+      # MLflow creates its tables in its own database on first start; --wait fails the step if it never gets healthy.
+      - name: MLflow server starts against its database
+        run: |
+          docker compose up -d --wait mlflow
+          curl -sf http://localhost:5000/health
       - name: Database logs on failure
         if: failure()
         run: docker compose logs timescaledb
