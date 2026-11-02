@@ -1,23 +1,21 @@
-"""The forecast job: train on everything known, forecast the next 48 hours, store it (ADR-0011, V7).
+"""The forecast job: load the champion, forecast the next 48 hours, store it (ADR-0011, V7).
 
 It runs on a schedule (a CronJob in Phase 4) and the API only reads what it stored, so requests are fast and every
-caller sees the same numbers. From step 2.7 it loads the registered champion instead of training each run.
+caller sees the same numbers. Training is separate (``train``, training.py): the job only predicts, in seconds.
 """
 
 from __future__ import annotations
 
-import datetime as dt
 from typing import Any
 
 import pandas as pd
 
-from gridpulse_forecasting.backtest import training_rows
-from gridpulse_forecasting.dataset import HORIZON, build_rolling, rolling_issue_times, rolling_targets
+from gridpulse_forecasting.dataset import HORIZON, rolling_targets
 from gridpulse_forecasting.db import Database
-from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON, build_features
+from gridpulse_forecasting.features import FEATURES, LAG_DAYS, build_features
+from gridpulse_forecasting.registry import Registered
 from gridpulse_forecasting.sources import load_sources
 from gridpulse_forecasting.tasks import Task
-from gridpulse_forecasting.tracking import git_commit
 
 MODEL_NAME = "lightgbm-cqr"
 
@@ -36,27 +34,20 @@ def issue_time_now() -> pd.Timestamp:
     return pd.Timestamp.now(tz="UTC").floor("30min")
 
 
-def forecast(db: Database, task: Task, issue_time: pd.Timestamp, first_day: dt.date) -> pd.DataFrame:
-    """Train the task's production model on what was known at ``issue_time`` and forecast the next 48 hours."""
-    issue_day = issue_time.tz_convert(LONDON).date()
-    start = dt.datetime.combine(first_day - dt.timedelta(days=max(LAG_DAYS) + 1), dt.time(), dt.UTC)
+def forecast(db: Database, task: Task, issue_time: pd.Timestamp, champion: Registered) -> pd.DataFrame:
+    """The champion's forecast of the next 48 hours, from what was known at ``issue_time``."""
+    # Only as much history as the features reach back: the longest lag, plus a day for UK-day boundaries.
+    start = (issue_time - pd.Timedelta(days=max(LAG_DAYS) + 2)).to_pydatetime()
     end = (issue_time + HORIZON + pd.Timedelta(days=1)).to_pydatetime()
     sources = load_sources(db, start, end)
-    targets = task.load_targets(db, start, issue_time.to_pydatetime())
-
-    # Training: rolling examples issued before today, keeping only those whose actual had been published.
-    examples = build_rolling(sources, targets, rolling_issue_times(first_day, issue_day - dt.timedelta(days=1)))
-    train = training_rows(examples, issue_time)
-    model = task.production()
-    model.fit(train[FEATURES], train["target"])
 
     periods = rolling_targets(issue_time)
-    predicted = model.predict(build_features(sources.as_of(issue_time), issue_time, periods)[FEATURES])
+    predicted = champion.model.predict(build_features(sources.as_of(issue_time), issue_time, periods)[FEATURES])
     return pd.DataFrame(
         {
             "task": task.name,
             "model": MODEL_NAME,
-            "model_version": git_commit(),
+            "model_version": champion.label,
             "issued_at": issue_time,
             "valid_from": periods,
             "valid_to": periods + pd.Timedelta(minutes=30),

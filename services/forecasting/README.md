@@ -137,10 +137,11 @@ carbon intensity's own history (published an hour after each half-hour, like IND
 ## The forecast job
 
 ```bash
-uv run --env-file ../../.env python -m gridpulse_forecasting forecast --task all
+uv run --env-file ../../.env python -m gridpulse_forecasting train --task all      # weekly: retrain, gate, register
+uv run --env-file ../../.env python -m gridpulse_forecasting forecast --task all   # often: champion -> 48 hours
 ```
 
-[job.py](src/gridpulse_forecasting/job.py) trains each task's production model on everything known now, forecasts
+[job.py](src/gridpulse_forecasting/job.py) loads each task's champion from the MLflow registry, forecasts
 the next 48 hours (96 half-hours, P10/P50/P90) from the latest half-hour, and upserts them into
 `grid.model_forecast` (migration V7). The API (step 2.6b) reads `grid.model_forecast_latest`: the newest forecast
 for each half-hour. Re-running for the same issue time replaces that forecast instead of duplicating it.
@@ -165,8 +166,27 @@ for each half-hour. Re-running for the same issue time replaces that forecast in
   24-hour mean, neither aligned with the target's time of day. Carbon does improve at short range (21.7 g/kWh at
   0-6 hours, 24.4 at 36-48), helped by its latest value. A "latest demand against the same time last week" feature,
   chosen on the validation window, is a Phase 5 item.
-- **Cost.** Each run trains from scratch: about 4 minutes per task on a 2-core Codespace. Step 2.7 moves training into
-  a retraining command with a model registry, so the job only loads the champion and predicts.
+- **Cost.** Seconds: it loads the champion and predicts, reading only the two weeks of history the features need.
+  Without a champion it stops and says to run `train` first, rather than training silently.
+
+## Retraining and the model registry
+
+`train` ([training.py](src/gridpulse_forecasting/training.py), [ADR-0012](../../docs/adr/0012-model-promotion.md))
+retrains each task and decides whether the result replaces the champion (`models:/gridpulse-{task}@champion` in
+MLflow):
+
+- **Champion vs challenger on data neither has seen.** The champion was trained up to its cutoff C. The challenger
+  (the current code) is trained on exactly that data, and both are scored on everything issued since C. The only
+  difference is the code, so a regression shows up; unchanged code ties.
+- **Gates:** no more than 1% worse than the champion, MAE at most 75% of seasonal naive's, and P10-P90 coverage
+  between 65% and 95%. With no champion, or under a week since its cutoff, only the absolute gates apply, on a
+  held-out last two weeks.
+- **What's promoted** is a model refit on all data up to now. Every version is registered either way, tagged with
+  its training cutoff, git commit, scores and the gate's reasons. `--promote always|never` overrides the gate.
+- A retrain that fails its gate exits non-zero, so a scheduled run shows up as failed.
+- To override the gate for one registered version, with the reason recorded on it in the registry:
+  `promote --task demand --version 1 --reason "..."`. Lowering a threshold after seeing a result isn't an option.
+
 
 ## The API
 
