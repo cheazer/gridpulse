@@ -198,6 +198,20 @@ BEGIN
 END $$;
 
 -- ------------------------------------------------------------ least privilege
+SET LOCAL ROLE scheduler_reader;
+DO $$
+DECLARE n int;
+BEGIN
+    SELECT count(*) INTO n FROM carbon_intensity;
+    BEGIN
+        SELECT count(*) INTO n FROM demand;
+        RAISE EXCEPTION 'scheduler_reader was allowed to read demand';
+    EXCEPTION WHEN insufficient_privilege THEN NULL;
+    END;
+    RAISE NOTICE 'PASS  scheduler_reader reads carbon_intensity and nothing else';
+END $$;
+RESET ROLE;
+
 SET LOCAL ROLE grid_reader;
 DO $$
 DECLARE n int;

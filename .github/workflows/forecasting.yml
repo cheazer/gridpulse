@@ -42,7 +42,11 @@ jobs:
       - uses: actions/checkout@v5
       - name: Create .env with throwaway passwords
         run: |
-          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
       - name: Build and start the API (and the database, migrations and logins it depends on)
         env:
           GRIDPULSE_VERSION: ${{ github.sha }}

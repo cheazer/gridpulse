@@ -1,0 +1,15 @@
+<!-- Adapters for Core's ICarbonForecasts (ADR-0013): GridPulse's forecasts over HTTP from the forecasting API, NESO's
+     from TimescaleDB with Dapper, as the read-only 'scheduler' login. -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
+  </ItemGroup>
+</Project>

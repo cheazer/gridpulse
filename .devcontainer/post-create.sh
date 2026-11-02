@@ -10,6 +10,7 @@ if [[ ! -f .env ]]; then
   sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(random)/" \
       -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(random)/" \
       -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(random)/" \
+      -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(random)/" \
       -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(random)/" .env.example > .env
   echo "Created .env with random database passwords"
 fi
