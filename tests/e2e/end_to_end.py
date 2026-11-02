@@ -71,7 +71,8 @@ def main() -> None:
     expected = START + GRIDPULSE_DIP[0] * HALF_HOUR
     check(instant(gridpulse["best"]["start"]) == expected, f"best window starts at GridPulse's dip: {gridpulse['best']}")
     low, high = gridpulse["savingLowKg"], gridpulse["savingHighKg"]
-    check(low is not None and high is not None and low <= gridpulse["savingKg"] <= high, f"a range: {low} to {high}")
+    # 10 kWh saving 140 g/kWh at P50, 112 at P10, 182 at P90: 1.12 to 1.82 kg around 1.4.
+    check(abs(low - 1.12) < 0.01 and abs(high - 1.82) < 0.01, f"a range of 1.12 to 1.82 kg: {low} to {high}")
 
     step("actuals flow through to the scheduling API")
     actuals = get_json(f"{SCHEDULER}/v1/carbon/GB/actual")["halfHours"]
@@ -132,7 +133,11 @@ def event(valid_from: dt.datetime, issued_at: dt.datetime | None, forecast: floa
 
 
 def plant_gridpulse_forecasts() -> None:
-    """A 48-hour carbon forecast with P10-P90 band, written as the forecast job's own login, with its privileges."""
+    """A 48-hour carbon forecast with a P10-P90 band, written as the forecast job's own login, with its privileges.
+
+    The band is proportional (-20%/+30%), so the saving differs at each level and the range is a real one; a band of
+    constant width would save the same at every level and hide a range that was never worked out.
+    """
     step("writing a GridPulse forecast as the forecast_job login")
     issued = START - dt.timedelta(minutes=1)  # a forecast never starts before its issue time
     rows = []
@@ -141,7 +146,7 @@ def plant_gridpulse_forecasts() -> None:
         start = START + i * HALF_HOUR
         rows.append(
             f"('carbon', 'e2e', 'e2e', '{iso(issued)}', '{iso(start)}', '{iso(start + HALF_HOUR)}', "
-            f"'gCO2/kWh', {p50 - 20}, {p50}, {p50 + 30})"
+            f"'gCO2/kWh', {p50 * 0.8}, {p50}, {p50 * 1.3})"
         )
     sql = (
         "INSERT INTO grid.model_forecast (task, model, model_version, issued_at, valid_from, valid_to, unit, p10, p50, p90) "
