@@ -59,7 +59,7 @@ def main() -> None:
 
     step("the scheduling API finds the planted NESO dip")
     neso = schedule("neso")
-    check(neso["best"]["start"] == iso(START + NESO_DIP[0] * HALF_HOUR), f"best window starts at the dip: {neso['best']}")
+    check(instant(neso["best"]["start"]) == START + NESO_DIP[0] * HALF_HOUR, f"best window starts at the dip: {neso['best']}")
     check(neso["best"]["intensity"] == DIP, "at the dip's intensity")
     # 10 kWh at 200 rather than 60 g/kWh: 1.4 kg saved.
     check(abs(neso["savingKg"] - 1.4) < 0.01, f"saves 1.4 kg: {neso['savingKg']}")
@@ -68,8 +68,8 @@ def main() -> None:
     carbon = get_json(f"{FORECASTING}/v1/forecasts/carbon")
     check(not carbon["stale"] and len(carbon["half_hours"]) >= HALF_HOURS - 1, "forecasting API has a fresh forecast")
     gridpulse = schedule("gridpulse")
-    expected = iso(START + GRIDPULSE_DIP[0] * HALF_HOUR)
-    check(gridpulse["best"]["start"] == expected, f"best window starts at GridPulse's dip: {gridpulse['best']}")
+    expected = START + GRIDPULSE_DIP[0] * HALF_HOUR
+    check(instant(gridpulse["best"]["start"]) == expected, f"best window starts at GridPulse's dip: {gridpulse['best']}")
     low, high = gridpulse["savingLowKg"], gridpulse["savingHighKg"]
     check(low is not None and high is not None and low <= gridpulse["savingKg"] <= high, f"a range: {low} to {high}")
 
@@ -213,6 +213,11 @@ def compose(*args: str, stdin: str | None = None) -> None:
 def env_file() -> dict[str, str]:
     pairs = (line.split("=", 1) for line in Path(".env").read_text().splitlines() if "=" in line and not line.startswith("#"))
     return {k.strip(): v.strip() for k, v in pairs}
+
+
+def instant(text: str) -> dt.datetime:
+    """A timestamp from an API as an aware datetime: they write offsets as "Z" or "+00:00", the same instant."""
+    return dt.datetime.fromisoformat(text)
 
 
 def iso(time: dt.datetime) -> str:
