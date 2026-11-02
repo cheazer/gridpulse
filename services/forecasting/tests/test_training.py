@@ -143,19 +143,22 @@ def test_registry_round_trip_and_champion_alias(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setenv("MLFLOW_REGISTRY_URI", tmp_path.as_uri())
     cutoff = pd.Timestamp("2025-04-10T12:00Z")
 
-    assert registry.load_champion("demand") is None
+    assert registry.load_champion("demand") is None  # nothing registered
     mlflow.set_experiment("registry-test")
     with mlflow.start_run():
-        first = registry.register("demand", SeasonalNaive(), cutoff, {"git_commit": "abc"}, promote=True)
+        first = registry.register("demand", SeasonalNaive(), cutoff, {"git_commit": "abc"}, promote=False)
+    assert registry.load_champion("demand") is None  # registered, but it failed its gate: still no champion
     with mlflow.start_run():
-        second = registry.register("demand", SeasonalNaive(), cutoff, {"git_commit": "def"}, promote=False)
+        second = registry.register("demand", SeasonalNaive(), cutoff, {"git_commit": "def"}, promote=True)
+    with mlflow.start_run():
+        third = registry.register("demand", SeasonalNaive(), cutoff, {"git_commit": "ghi"}, promote=False)
 
     champion = registry.load_champion("demand")
     assert champion is not None
-    assert (first, second) == ("1", "2")
-    assert champion.version == "1"  # registered but not promoted: the champion doesn't change
+    assert (first, second, third) == ("1", "2", "3")
+    assert champion.version == "2"  # v3 was registered but not promoted: the champion doesn't change
     assert champion.training_cutoff == cutoff
-    assert champion.label == "gridpulse-demand/v1"
+    assert champion.label == "gridpulse-demand/v2"
     features = pd.DataFrame({"demand_lag_7d": [25_000.0]})
     assert champion.model.predict(features)["p50"].tolist() == [25_000.0]
 
@@ -167,7 +170,7 @@ def test_a_registry_error_is_not_mistaken_for_no_champion(monkeypatch: pytest.Mo
     from gridpulse_forecasting import registry
 
     class Refusing:
-        def get_model_version_by_alias(self, name: str, alias: str) -> None:
+        def get_registered_model(self, name: str) -> None:
             raise MlflowException("Invalid Host header - possible DNS rebinding attack detected")
 
     monkeypatch.setattr(mlflow, "MlflowClient", Refusing)

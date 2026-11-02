@@ -33,8 +33,11 @@ RUN apt-get update \
  && useradd --system --uid 10001 --home-dir /app gridpulse
 
 COPY --from=build /app/.venv /app/.venv
+# GIT_PYTHON_REFRESH: MLflow looks for git to record the commit; there's none in the image, which records the
+# commit in GRIDPULSE_VERSION instead, so its repeated warning is noise.
 ENV PATH=/app/.venv/bin:$PATH \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    GIT_PYTHON_REFRESH=quiet
 
 # The commit the image was built from, recorded with every stored forecast (model_version) and MLflow run.
 ARG GRIDPULSE_VERSION=unknown

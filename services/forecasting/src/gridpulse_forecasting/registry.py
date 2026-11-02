@@ -75,14 +75,17 @@ def load_champion(task: str) -> Registered | None:
     """The current champion with its fitted model, or None if the task has none yet."""
     name = model_name(task)
     client = mlflow.MlflowClient()
+    # Two ways to have no champion: no model registered yet, or versions registered but none promoted. Anything
+    # else (MLflow down, refusing the request, misconfigured) must fail loudly, not masquerade as "run train first".
     try:
-        version = client.get_model_version_by_alias(name, ALIAS)
+        registered = client.get_registered_model(name)
     except MlflowException as error:
-        # Only "no such model or alias" means there's no champion. Anything else (MLflow down, refused, misconfigured)
-        # must fail loudly, not masquerade as "run train first".
         if error.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
             return None
         raise
+    if ALIAS not in registered.aliases:
+        return None
+    version = client.get_model_version_by_alias(name, ALIAS)
     loaded = mlflow.pyfunc.load_model(f"models:/{name}@{ALIAS}")
     forecaster: Forecaster = loaded.unwrap_python_model().forecaster
     return Registered(
