@@ -5,6 +5,7 @@
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\GridPulse.Scheduler.Telemetry\GridPulse.Scheduler.Telemetry.csproj" />
     <ProjectReference Include="..\GridPulse.Scheduler.Data\GridPulse.Scheduler.Data.csproj" />
   </ItemGroup>
   <ItemGroup>

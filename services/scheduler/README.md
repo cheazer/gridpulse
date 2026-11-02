@@ -3,7 +3,7 @@
 C# / .NET 10. Finds the lowest-carbon window for flexible electricity use in Great Britain, and shows it on a
 dashboard. Design: [ADR-0013](../../docs/adr/0013-scheduler-design.md).
 
-Phase 3 builds it in steps; so far it holds the window search (`Core`), data access (`Data`) and the scheduling API (`Api`).
+Phase 3 built it; Phase 4 adds telemetry (`Telemetry`).
 
 | Project | |
 |---|---|
@@ -11,6 +11,7 @@ Phase 3 builds it in steps; so far it holds the window search (`Core`), data acc
 | `src/GridPulse.Scheduler.Data` | Where forecasts come from: the forecasting API over HTTP, NESO's from TimescaleDB |
 | `src/GridPulse.Scheduler.Api` | ASP.NET Core Minimal API; OpenAPI at `/openapi/v1.json`, Scalar UI at `/scalar` |
 | `src/GridPulse.Scheduler.Dashboard` | Blazor Web App (Interactive Server) |
+| `src/GridPulse.Scheduler.Telemetry` | OpenTelemetry setup shared by the API and the dashboard |
 | `tests/*` | xUnit v3 (and bUnit for the dashboard), one project per project above |
 
 ## Develop
@@ -128,3 +129,20 @@ Britain, GridPulse's with its P10-P90 band; now, and the cleanest half-hour of t
 - **The image** (target `dashboard`) is the chiseled `-extra` variant (246 MB): plain chiseled images leave out the
   time zone database, which UK time needs. CI's smoke test loads the schedule page, which converts to UK time as it
   renders, so a missing time zone database fails the build.
+
+## Telemetry
+
+Both deployables send traces and metrics over OTLP with [OpenTelemetry](https://opentelemetry.io/docs/languages/dotnet/)
+(`AddTelemetry` in `Telemetry`), to the collector named by `OTEL_EXPORTER_OTLP_ENDPOINT`. Unset, nothing is exported,
+so tests and a bare `dotnet run` stay quiet. The other standard `OTEL_*` variables (protocol, headers, resource
+attributes) work as documented.
+
+- **Traces** follow a request through ASP.NET Core, HttpClient (with W3C `traceparent` headers, so the forecasting
+  API's spans join the same trace) and Npgsql. Health probes are left out: Kubernetes calls them every few seconds.
+- **Metrics** come mostly from .NET itself: request durations (`http.server.request.duration`), outgoing calls,
+  Kestrel, the runtime (GC, thread pool), Npgsql, and Polly's retries and circuit-breaker state under the resilience
+  pipelines. The SDK only has to be told which meters to export.
+- **The scheduler's own**, in `SchedulerMetrics`: `gridpulse.scheduler.schedules` (jobs by `source`, `outcome`
+  (`scheduled`, `does-not-fit`, `no-forecast-coverage`) and whether the forecast was `stale`) and
+  `gridpulse.scheduler.saving` (a histogram of kg CO2 saved). Tags are kept to a handful of values, since every
+  combination is a separate time series. Tests read them with `MetricCollector`, as an exporter would.

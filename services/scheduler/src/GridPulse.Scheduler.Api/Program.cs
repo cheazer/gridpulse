@@ -1,11 +1,14 @@
 using GridPulse.Scheduler.Api;
 using GridPulse.Scheduler.Data;
+using GridPulse.Scheduler.Telemetry;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddTelemetry("scheduler-api", SchedulerMetrics.MeterName);
+builder.Services.AddSingleton<SchedulerMetrics>();
 builder.Services.AddSchedulerData(builder.Configuration);
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new ZonedDateTimeOffsetConverter()));
