@@ -1,0 +1,134 @@
+@page "/schedule"
+@using System.ComponentModel.DataAnnotations
+@using GridPulse.Scheduler.Core
+@inject ISchedulerApi Api
+@inject TimeProvider Clock
+
+<PageTitle>Schedule a job · GridPulse</PageTitle>
+
+<h1>Schedule a job</h1>
+<p class="lead">Tell GridPulse how long a flexible job runs and when it must finish; it finds the cleanest time to run it.</p>
+
+<EditForm Model="form" OnValidSubmit="SubmitAsync" FormName="schedule" class="form">
+    <DataAnnotationsValidator />
+    <label class="field">
+        How long it runs (hours)
+        <InputNumber @bind-Value="form.Hours" step="0.5" min="0.5" aria-label="Hours" />
+        <ValidationMessage For="() => form.Hours" />
+    </label>
+    <label class="field">
+        Electricity it uses (kWh)
+        <InputNumber @bind-Value="form.EnergyKwh" step="1" min="1" aria-label="Energy" />
+        <ValidationMessage For="() => form.EnergyKwh" />
+    </label>
+    <label class="field">
+        Must finish by (UK time)
+        <InputDate Type="InputDateType.DateTimeLocal" @bind-Value="form.Deadline" aria-label="Deadline" />
+    </label>
+    <label class="field">
+        Region
+        <InputSelect @bind-Value="form.Region" aria-label="Region">
+            @foreach (var r in Regions.All.Order(StringComparer.Ordinal))
+            {
+                <option value="@r">@Home.Label(r)</option>
+            }
+        </InputSelect>
+    </label>
+    <p class="muted small">
+        Great Britain uses GridPulse's own forecast, with a likely range; regions use NESO's regional forecast.
+    </p>
+    <button type="submit" class="button" disabled="@busy">@(busy ? "Finding the cleanest time…" : "Find the cleanest time")</button>
+</EditForm>
+
+@if (problem is not null)
+{
+    <p class="problem" role="alert">@problem</p>
+}
+
+@if (result is not null)
+{
+    var best = result.Best;
+    var now = result.RunNow;
+    <section class="result" aria-label="Result">
+        <h2>Run it @UkTime.Format(best.Start, withDate: true) to @UkTime.Format(best.End)</h2>
+        <p class="saving">
+            Saves <strong>@result.SavingKg.ToString("0.0") kg CO2</strong> (@result.SavingPercent.ToString("0")%)
+            against starting now, at @UkTime.Format(now.Start).
+            @if (result.SavingLowKg is { } low && result.SavingHighKg is { } high)
+            {
+                <span class="muted">Likely between @low.ToString("0.0") and @high.ToString("0.0") kg.</span>
+            }
+        </p>
+        <table class="compare">
+            <thead><tr><th></th><th>Cleanest window</th><th>Starting now</th></tr></thead>
+            <tbody>
+                <tr><th>Starts (UK)</th><td>@UkTime.Format(best.Start)</td><td>@UkTime.Format(now.Start)</td></tr>
+                <tr><th>Carbon intensity</th><td>@best.Intensity.ToString("0") g/kWh</td><td>@now.Intensity.ToString("0") g/kWh</td></tr>
+                <tr><th>Emissions</th><td>@best.EmissionsKg.ToString("0.0") kg</td><td>@now.EmissionsKg.ToString("0.0") kg</td></tr>
+            </tbody>
+        </table>
+        @if (result.LimitedByForecast)
+        {
+            <p class="warning" role="status">
+                The deadline is beyond the forecast, so only the next 48 hours were searched; a later time might be cleaner.
+            </p>
+        }
+        @if (result.Forecast.Stale)
+        {
+            <p class="warning" role="status">The forecast used is out of date. Treat this result with care.</p>
+        }
+    </section>
+}
+
+@code {
+    private readonly JobForm form = new();
+    private ScheduleResponse? result;
+    private string? problem;
+    private bool busy;
+
+    protected override void OnInitialized()
+    {
+        // A default deadline of this time tomorrow, on the hour, UK time.
+        var uk = UkTime.ToUk(Clock.GetUtcNow()).AddDays(1);
+        form.Deadline = new DateTime(uk.Year, uk.Month, uk.Day, uk.Hour, 0, 0, DateTimeKind.Unspecified);
+    }
+
+    private async Task SubmitAsync()
+    {
+        result = null;
+        problem = null;
+        if (!UkTime.TryFromUk(form.Deadline, out var deadline, out var error))
+        {
+            problem = error;
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            var source = form.Region == Regions.GreatBritain ? ForecastSource.GridPulse : ForecastSource.Neso;
+            var outcome = await Api.ScheduleAsync(
+                new JobRequest((int)Math.Round(form.Hours * 60), form.EnergyKwh, deadline, form.Region, source),
+                CancellationToken.None);
+            result = outcome.Schedule;
+            problem = outcome.Problem;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    internal sealed class JobForm
+    {
+        [Range(0.5, 168, ErrorMessage = "Between half an hour and a week.")]
+        public double Hours { get; set; } = 3;
+
+        [Range(0.1, 1_000_000, ErrorMessage = "A positive amount, in kWh.")]
+        public double EnergyKwh { get; set; } = 50;
+
+        public DateTime Deadline { get; set; }
+
+        public string Region { get; set; } = Regions.GreatBritain;
+    }
+}

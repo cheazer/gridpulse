@@ -22,3 +22,18 @@ services:
     ports:
       - "127.0.0.1:8100:8080"
     restart: unless-stopped
+
+  # The dashboard, at http://localhost:8200. A client of the scheduling API like any other: it never reads the
+  # database itself.
+  scheduler-dashboard:
+    build:
+      context: ../../services/scheduler
+      target: dashboard
+    depends_on:
+      scheduler-api:
+        condition: service_started
+    environment:
+      SCHEDULER_API_URL: http://scheduler-api:8080
+    ports:
+      - "127.0.0.1:8200:8080"
+    restart: unless-stopped

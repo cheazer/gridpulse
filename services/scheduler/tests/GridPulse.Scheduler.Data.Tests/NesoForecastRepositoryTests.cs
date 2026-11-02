@@ -82,6 +82,23 @@ public class NesoForecastRepositoryTests(DatabaseFixture database)
     }
 
     [Fact]
+    public async Task Actuals_are_the_rows_without_an_issue_time_and_skip_zero_glitches()
+    {
+        var day = Ten.AddDays(5);
+        await Insert(
+            Row("GB", day, null, null, actual: 150),
+            Row("GB", day.AddMinutes(30), null, null, actual: 0), // a glitch: never a real GB reading
+            Row("GB", day.AddMinutes(60), day.AddMinutes(-60), 120), // a forecast, not an actual
+            Row("london", day, null, null, actual: 90)); // another region
+        using var services = database.SchedulerServices();
+
+        var readings = await services.GetRequiredService<ICarbonActuals>()
+            .GetAsync("GB", day, day.AddHours(2), TestContext.Current.CancellationToken);
+
+        Assert.Equal([(day, 150.0)], readings.Select(r => (r.Start, r.Intensity)));
+    }
+
+    [Fact]
     public async Task Core_gets_neso_forecasts_through_its_interface()
     {
         var soon = DateTimeOffset.UtcNow.AddHours(1);

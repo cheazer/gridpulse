@@ -1,9 +1,126 @@
 @page "/"
+@using GridPulse.Scheduler.Core
+@inject ISchedulerApi Api
+@inject TimeProvider Clock
 
 <PageTitle>GridPulse</PageTitle>
 
 <h1>When is the grid cleanest?</h1>
-<p>
+<p class="lead">
     Great Britain's electricity gets cleaner when the wind blows and the sun shines. GridPulse forecasts national
     demand and carbon intensity for the next 48 hours and finds the lowest-carbon window for flexible work.
 </p>
+
+<label class="field">
+    Region
+    <select @bind="region" @bind:after="LoadAsync" aria-label="Region">
+        @foreach (var r in regions)
+        {
+            <option value="@r">@Label(r)</option>
+        }
+    </select>
+</label>
+
+@if (problem is not null)
+{
+    <p class="problem" role="alert">@problem</p>
+}
+else if (view is null)
+{
+    <p class="muted">Loading forecasts…</p>
+}
+else
+{
+    <div class="cards">
+        <section class="card" aria-label="Now">
+            <span class="card-label">Now</span>
+            @if (view.Now is not null)
+            {
+                <span class="card-value">@view.Now.Expected.ToString("0") <small>gCO2/kWh</small></span>
+                <span class="card-note">@view.NowComparedWithNextDay(neso!)</span>
+            }
+            else
+            {
+                <span class="card-note">No forecast for this half-hour</span>
+            }
+        </section>
+        <section class="card" aria-label="Cleanest in the next 24 hours">
+            <span class="card-label">Cleanest in the next 24 hours</span>
+            @if (view.CleanestNextDay is not null)
+            {
+                <span class="card-value">@view.CleanestNextDay.Expected.ToString("0") <small>gCO2/kWh</small></span>
+                <span class="card-note">@UkTime.Format(view.CleanestNextDay.Start) (UK time)</span>
+            }
+        </section>
+    </div>
+
+    @if (view.NesoStale || view.GridPulseStale)
+    {
+        <p class="warning" role="status">
+            @(view.NesoStale ? "NESO's forecast is out of date. " : "")@(view.GridPulseStale ? "GridPulse's forecast is out of date. " : "")
+            Treat these numbers with care.
+        </p>
+    }
+
+    <CarbonChart Neso="view.Neso" GridPulse="view.GridPulse" Actual="view.Actual"
+                 Title="@($"Carbon intensity, {Label(view.Region)}")" />
+
+    <p class="muted small">
+        @if (view.GridPulse.Count > 0)
+        {
+            <text>The shaded band is GridPulse's 80% range: the actual should land inside it about 4 times in 5. </text>
+        }
+        @if (view.Actual.Count == 0)
+        {
+            <text>NESO publishes measured carbon intensity nationally, so regions show forecasts only. </text>
+        }
+        Times are UK time.
+    </p>
+
+    <p><a class="button" href="schedule">Schedule a job</a></p>
+}
+
+@code {
+    private IReadOnlyList<string> regions = [Regions.GreatBritain];
+    private string region = Regions.GreatBritain;
+    private Timeline? neso;
+    private CarbonView? view;
+    private string? problem;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            regions = await Api.RegionsAsync(CancellationToken.None);
+        }
+        catch (HttpRequestException)
+        {
+            // The region list is a nicety; the load below reports the outage.
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        problem = null;
+        view = null;
+        try
+        {
+            neso = await Api.TimelineAsync(region, ForecastSource.Neso, CancellationToken.None);
+            var gridPulse = region == Regions.GreatBritain
+                ? await Api.TimelineAsync(region, ForecastSource.GridPulse, CancellationToken.None)
+                : null;
+            var actuals = await Api.ActualsAsync(region, CancellationToken.None);
+            view = CarbonView.From(region, neso, gridPulse, actuals, Clock.GetUtcNow());
+        }
+        catch (HttpRequestException)
+        {
+            problem = "Forecasts are unavailable right now. Try again in a minute.";
+        }
+    }
+
+    internal static string Label(string region) => region == Regions.GreatBritain
+        ? "Great Britain"
+        : string.Join(" ", region.Split('-').Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+}

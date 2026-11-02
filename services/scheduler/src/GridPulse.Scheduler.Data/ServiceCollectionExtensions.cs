@@ -9,7 +9,7 @@ namespace GridPulse.Scheduler.Data;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers <see cref="ICarbonForecasts"/> and what it needs, configured from the same environment variables as
+    /// Registers <see cref="ICarbonForecasts"/>, <see cref="ICarbonActuals"/> and what they need, configured from the same environment variables as
     /// the rest of the stack (.env.example): POSTGRES_HOST, TIMESCALE_PORT, POSTGRES_DB, SCHEDULER_DB_USER,
     /// SCHEDULER_DB_PASSWORD and FORECASTING_API_URL.
     /// </summary>
@@ -41,6 +41,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<NesoForecastRepository>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ICarbonForecasts, CarbonForecasts>();
+        services.AddSingleton<ICarbonActuals, NesoActualsRepository>();
 
         var baseUrl = configuration["FORECASTING_API_URL"] ?? "http://localhost:8000";
         services

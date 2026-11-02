@@ -7,6 +7,8 @@
     <!-- API -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.18.7" />
+    <!-- Dashboard -->
+    <PackageVersion Include="Blazor-ApexCharts" Version="7.1.0" />
     <!-- Data access -->
     <PackageVersion Include="Dapper" Version="2.1.89" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />

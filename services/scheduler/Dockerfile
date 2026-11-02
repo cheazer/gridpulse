@@ -30,6 +30,11 @@ FROM runtime AS api
 COPY --from=publish-api /out .
 ENTRYPOINT ["dotnet", "GridPulse.Scheduler.Api.dll"]
 
-FROM runtime AS dashboard
+# The dashboard shows UK time, so it needs the time zone database, which plain chiseled images leave out; -extra adds
+# it (and ICU). The API works in UTC only and keeps the smaller image.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.14-noble-chiseled-extra AS dashboard
+WORKDIR /app
+USER $APP_UID
+EXPOSE 8080
 COPY --from=publish-dashboard /out .
 ENTRYPOINT ["dotnet", "GridPulse.Scheduler.Dashboard.dll"]

@@ -8,6 +8,7 @@ internal static class Endpoints
     private static readonly TimeSpan LongestJob = TimeSpan.FromDays(7);
     private static readonly TimeSpan DefaultTimeline = TimeSpan.FromHours(48);
     private static readonly TimeSpan LongestTimeline = TimeSpan.FromDays(7);
+    private static readonly TimeSpan DefaultActuals = TimeSpan.FromHours(24);
 
     public static void MapSchedulerEndpoints(this IEndpointRouteBuilder app)
     {
@@ -16,6 +17,8 @@ internal static class Endpoints
             .WithSummary("The lowest-carbon window for a flexible job, and the CO2 it saves against running it now");
         v1.MapGet("/carbon/{region}", Timeline)
             .WithSummary("The carbon intensity forecast for a region, half-hour by half-hour");
+        v1.MapGet("/carbon/{region}/actual", Actuals)
+            .WithSummary("Measured carbon intensity, half-hour by half-hour (national only: NESO forecasts regions)");
         v1.MapGet("/regions", () => TypedResults.Ok(Regions.All.Order(StringComparer.Ordinal)))
             .WithSummary("The regions forecasts are available for");
     }
@@ -116,6 +119,50 @@ internal static class Endpoints
 
         var series = await forecasts.GetAsync(parsed.Value, region, start, end, cancellationToken).ConfigureAwait(false);
         return TypedResults.Ok(new CarbonTimeline(ForecastInfo.From(series), series.HalfHours));
+    }
+
+    internal static async Task<Results<Ok<CarbonActuals>, ValidationProblem>> Actuals(
+        string region,
+        ICarbonActuals actuals,
+        TimeProvider clock,
+        CancellationToken cancellationToken,
+        string? from = null,
+        string? to = null)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (!Regions.All.Contains(region))
+        {
+            errors["region"] = [$"unknown region '{region}'; see GET /v1/regions"];
+        }
+
+        var now = clock.GetUtcNow();
+        DateTimeOffset end = now, start = now - DefaultActuals;
+        if (to is not null && !Timestamps.TryParse(to, out end))
+        {
+            errors["to"] = ["needs a UTC offset, e.g. 2030-01-01T18:00:00Z"];
+        }
+
+        if (from is not null && !Timestamps.TryParse(from, out start))
+        {
+            errors["from"] = ["needs a UTC offset, e.g. 2030-01-01T18:00:00Z"];
+        }
+        else if (from is null)
+        {
+            start = end - DefaultActuals;
+        }
+
+        if (errors.Count == 0 && (end <= start || end - start > LongestTimeline))
+        {
+            errors["to"] = [$"must be after 'from', and at most {LongestTimeline.TotalDays} days later"];
+        }
+
+        if (errors.Count > 0)
+        {
+            return TypedResults.ValidationProblem(errors);
+        }
+
+        var readings = await actuals.GetAsync(region, HalfHours.Floor(start), end, cancellationToken).ConfigureAwait(false);
+        return TypedResults.Ok(new CarbonActuals(region, readings));
     }
 
     /// <summary>The forecast source, checked against the region; adds to <paramref name="errors"/> if invalid.</summary>

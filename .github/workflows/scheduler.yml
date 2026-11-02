@@ -40,8 +40,8 @@ jobs:
       - name: Create .env with throwaway passwords
         run: |
           sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
-      - name: Build and start the scheduler API, the forecasting API and the database
-        run: docker compose up -d --build --wait forecasting-api scheduler-api
+      - name: Build and start the dashboard, the scheduler API, the forecasting API and the database
+        run: docker compose up -d --build --wait forecasting-api scheduler-api scheduler-dashboard
       - name: Smoke test
         run: |
           for i in $(seq 1 30); do curl -sf http://localhost:8100/health && break; sleep 2; done
@@ -54,8 +54,17 @@ jobs:
           cat /tmp/schedule.json
           test "$code" = "422"
           python3 -c "import json; assert json.load(open('/tmp/schedule.json'))['reason'] == 'no-forecast-coverage'"
+      - name: Dashboard smoke test
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:8200/health && break; sleep 2; done
+          # Server-rendered, so the pages' text is in the HTML. With no forecasts yet the home page says so, not 500s.
+          curl -sf http://localhost:8200/ | grep -q "When is the grid cleanest?"
+          # The schedule page converts to UK time as it renders: a 200 means the image has the time zone database.
+          curl -sf http://localhost:8200/schedule | grep -q "Must finish by (UK time)"
       - name: Runs as a non-root user
-        run: test "$(docker image inspect --format '{{.Config.User}}' gridpulse-scheduler-api)" != "root"
+        run: |
+          test "$(docker image inspect --format '{{.Config.User}}' gridpulse-scheduler-api)" != "root"
+          test "$(docker image inspect --format '{{.Config.User}}' gridpulse-scheduler-dashboard)" != "root"
       - name: Logs on failure
         if: failure()
-        run: docker compose logs scheduler-api forecasting-api db-users
+        run: docker compose logs scheduler-dashboard scheduler-api forecasting-api db-users

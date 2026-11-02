@@ -148,6 +148,37 @@ public class ApiTests
     }
 
     [Fact]
+    public async Task Actuals_default_to_the_last_24_hours()
+    {
+        var actuals = new FakeActuals();
+        actuals.Readings.Add(new CarbonReading(TestApp.Now.AddHours(-2).AddMinutes(-10), 180));
+        await using var app = TestApp.Create(new FakeForecasts(), actuals);
+        using var client = app.CreateClient();
+
+        using var response = await client.GetAsync(new Uri("/v1/carbon/GB/actual", UriKind.Relative), Ct);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var asked = Assert.Single(actuals.Asked);
+        Assert.Equal(TestApp.Now, asked.End);
+        Assert.Equal(new DateTimeOffset(2029, 12, 31, 9, 0, 0, TimeSpan.Zero), asked.Start); // 24 h back, floored
+        Assert.Equal(180, json.RootElement.GetProperty("halfHours")[0].GetProperty("intensity").GetDouble());
+    }
+
+    [Theory]
+    [InlineData("/v1/carbon/atlantis/actual")]
+    [InlineData("/v1/carbon/GB/actual?from=2030-01-01T08:00:00")] // no zone
+    public async Task Bad_actuals_requests_are_400s(string url)
+    {
+        await using var app = TestApp.Create(new FakeForecasts());
+        using var client = app.CreateClient();
+
+        using var response = await client.GetAsync(new Uri(url, UriKind.Relative), Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Regions_are_listed()
     {
         await using var app = TestApp.Create(new FakeForecasts());

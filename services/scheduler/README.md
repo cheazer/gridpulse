@@ -85,6 +85,7 @@ curl -X POST http://localhost:8100/v1/schedule -H "Content-Type: application/jso
 |---|---|
 | `POST /v1/schedule` | The cleanest window for a job (`durationMinutes`, `energyKwh`, `deadline`, optional `earliestStart`, `region`, `source`), the run-now window, and the CO2 saved with its range |
 | `GET /v1/carbon/{region}?source=&from=&to=` | The forecast, half-hour by half-hour (default: NESO's, the next 48 hours) |
+| `GET /v1/carbon/{region}/actual?from=&to=` | Measured intensity (default: the last 24 hours; NESO publishes it nationally only) |
 | `GET /v1/regions` | GB, its three nations and 14 regions |
 | `GET /health`, `GET /ready` | Liveness (checks nothing else), and readiness (below) |
 
@@ -98,3 +99,32 @@ curl -X POST http://localhost:8100/v1/schedule -H "Content-Type: application/jso
   service.
 - **The image** ([Dockerfile](Dockerfile), target `api`) is built from the locked packages and runs on the chiseled
   ASP.NET image: no shell, non-root (uid 1654), 191 MB.
+
+## The dashboard
+
+```bash
+docker compose up -d scheduler-dashboard                     # from the repo root; http://localhost:8200
+```
+
+Two pages: **Grid now** (the next 48 hours' carbon intensity for any region: actuals, NESO's forecast and, for Great
+Britain, GridPulse's with its P10-P90 band; now, and the cleanest half-hour of the next day) and **Schedule a job**
+(a form over `POST /v1/schedule`, with the answer in words: when to run, the saving and its likely range).
+
+- **A client of the API like any other.** The dashboard never reads the database; it calls the scheduling API over
+  HTTP (`SCHEDULER_API_URL`, default `http://localhost:8100`) through the same standard resilience pipeline as the
+  scheduler's own forecasting client. Problem details become sentences ("The job doesn't fit before its deadline").
+- **Blazor Interactive Server.** Pages render on the server (so the first HTML already has the numbers) and then stay
+  live over a SignalR connection; no API keys or database credentials ever reach the browser. The chart is
+  [Blazor-ApexCharts](https://github.com/apexcharts/Blazor-ApexCharts).
+- **UK clock in, UTC behind.** People type and read UK times; everything else is UTC. The skipped spring hour
+  (01:30 on the last Sunday in March) is refused with an explanation; the repeated autumn hour means its first
+  occurrence, the earlier and safer deadline. Points are plotted at UK wall-clock time so the axis reads the same
+  wherever the viewer is.
+- **"Now" compared with the day, not a fixed scale.** "Dirtier than 81% of the next 24 hours" says whether to wait
+  without knowing what 150 g/kWh means; it compares against the other half-hours only, which a test caught.
+- **Tested without a browser.** bUnit renders the pages in memory against a fake API and a fixed clock (`TimeProvider`):
+  the numbers shown, region switching, stale warnings, outages, the form's validation and what it sends. The view model,
+  UK-time conversions and the HTTP client's wording have plain unit tests.
+- **The image** (target `dashboard`) is the chiseled `-extra` variant (246 MB): plain chiseled images leave out the
+  time zone database, which UK time needs. CI's smoke test loads the schedule page, which converts to UK time as it
+  renders, so a missing time zone database fails the build.
