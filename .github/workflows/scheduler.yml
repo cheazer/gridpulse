@@ -1,0 +1,33 @@
+name: scheduler
+
+on:
+  push:
+    branches: [main]
+    paths: ["services/scheduler/**", ".editorconfig", ".github/workflows/scheduler.yml"]
+  pull_request:
+    paths: ["services/scheduler/**", ".editorconfig", ".github/workflows/scheduler.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/scheduler
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: services/scheduler/global.json
+          cache: true
+          cache-dependency-path: services/scheduler/**/packages.lock.json
+      - name: Restore exactly the locked packages
+        run: dotnet restore GridPulse.Scheduler.slnx --locked-mode
+      - name: Formatting and code style (.editorconfig)
+        run: dotnet format GridPulse.Scheduler.slnx --verify-no-changes --no-restore
+      - name: Build (warnings are errors, recommended analysers)
+        run: dotnet build GridPulse.Scheduler.slnx --no-restore --configuration Release
+      - name: Tests
+        run: dotnet test --solution GridPulse.Scheduler.slnx --no-build --configuration Release

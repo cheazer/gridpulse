@@ -1,0 +1,13 @@
+<!-- The scheduling API (step 3.4): ASP.NET Core Minimal APIs, OpenAPI at /openapi/v1.json, Scalar UI at /scalar. -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GridPulse.Scheduler.Api.Tests" />
+  </ItemGroup>
+</Project>

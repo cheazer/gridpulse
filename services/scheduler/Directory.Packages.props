@@ -1,0 +1,16 @@
+<!-- Central package management: every NuGet version is set here, once, for all projects. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- API -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.18.7" />
+    <!-- Tests. xUnit v3 runs on Microsoft.Testing.Platform (opted into in global.json), so the old VSTest
+         packages (Microsoft.NET.Test.Sdk, xunit.runner.visualstudio) aren't needed. -->
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />
+    <PackageVersion Include="bunit" Version="2.13.3" />
+  </ItemGroup>
+</Project>
