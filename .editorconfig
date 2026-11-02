@@ -11,9 +11,9 @@ indent_size = 2
 [*.{java,kt,kts,gradle}]
 indent_size = 4
 
-[*.{cs,csproj,razor}]
+# LF like everything else: .gitattributes stores text as LF, so CRLF here would make `dotnet format` fail in CI.
+[*.{cs,csproj,razor,props,slnx}]
 indent_size = 4
-end_of_line = crlf
 
 [*.py]
 indent_size = 4

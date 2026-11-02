@@ -1,0 +1,7 @@
+<!-- The dashboard (step 3.5): a Blazor Web App, Interactive Server render mode. It calls the scheduling API like
+     any other client, so it can be deployed and scaled on its own. -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
+  </ItemGroup>
+</Project>

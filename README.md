@@ -173,7 +173,7 @@ seasonal naive clearly and has calibrated intervals; overrides are recorded with
 
 ## Decisions
 
-Twelve architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
+Thirteen architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
 
 - [0004](docs/adr/0004-event-identity-and-time.md): deterministic event IDs and UTC timestamps, so replays and
   backfills are idempotent.
