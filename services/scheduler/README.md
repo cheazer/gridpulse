@@ -3,7 +3,7 @@
 C# / .NET 10. Finds the lowest-carbon window for flexible electricity use in Great Britain, and shows it on a
 dashboard. Design: [ADR-0013](../../docs/adr/0013-scheduler-design.md).
 
-Phase 3 builds it in steps; so far it holds the solution skeleton, the window search (`Core`) and data access (`Data`).
+Phase 3 builds it in steps; so far it holds the window search (`Core`), data access (`Data`) and the scheduling API (`Api`).
 
 | Project | |
 |---|---|
@@ -45,8 +45,10 @@ with, and the CO2 saved.
 - **Honest edges.** A window never includes a half-hour without a forecast. A deadline beyond the forecast is
   searched as far as the forecast goes and flagged (`LimitedByForecast`). A job that can't fit, or a forecast with no
   complete window, gets a `NotScheduled` with the reason, never a guess. Equally clean windows go to the earliest.
-- **Saving with a range.** With P10/P90 forecasts, the saving's range compares like with like (the best window's P10
-  with the earliest's P10, and P90 with P90), because forecast errors move together from hour to hour.
+- **Saving with a range.** With P10/P90 forecasts, the saving is worked out like with like at each quantile level
+  (P10 with P10, P50 with P50, P90 with P90), because forecast errors move together from hour to hour, and the range
+  spans all three. Bands are often lopsided, so the P10 and P90 savings alone can both fall below the expected one; a
+  range that left the expected saving out would contradict itself (found on live data, now a tested invariant).
 - **Tested against brute force.** 500 random cases (gaps, partial half-hours, mixed ranges, random deadlines and
   "now") must match a deliberately naive search that adds up minutes of overlap per half-hour. Planting a bug in the
   partial-half-hour weighting, or an off-by-one in the window sums, fails it.
@@ -71,3 +73,28 @@ it, so the scheduling logic never touches HTTP or SQL (ADR-0013).
 - **Configuration** is the stack's environment variables: `POSTGRES_HOST`, `TIMESCALE_PORT`, `POSTGRES_DB`,
   `SCHEDULER_DB_PASSWORD` (required), `SCHEDULER_DB_USER` (default `scheduler`), `FORECASTING_API_URL` (default
   `http://localhost:8000`).
+
+## The API
+
+```bash
+docker compose up -d scheduler-api                           # from the repo root; docs at http://localhost:8100/scalar
+curl -X POST http://localhost:8100/v1/schedule -H "Content-Type: application/json"   -d '{"durationMinutes": 180, "energyKwh": 50, "deadline": "2026-11-03T07:00:00Z"}'
+```
+
+| Endpoint | |
+|---|---|
+| `POST /v1/schedule` | The cleanest window for a job (`durationMinutes`, `energyKwh`, `deadline`, optional `earliestStart`, `region`, `source`), the run-now window, and the CO2 saved with its range |
+| `GET /v1/carbon/{region}?source=&from=&to=` | The forecast, half-hour by half-hour (default: NESO's, the next 48 hours) |
+| `GET /v1/regions` | GB, its three nations and 14 regions |
+| `GET /health`, `GET /ready` | Liveness (checks nothing else), and readiness (below) |
+
+- **Errors are RFC 7807 problem details.**
+  - **400** names each invalid field. Timestamps need a zone (`Z` or `+01:00`): .NET would otherwise read
+    `2030-01-01T18:00` as the server's local time, ambiguous on a UK clock-change day.
+  - **422** means the job can't be scheduled, with the reason (`does-not-fit`, `no-forecast-coverage`).
+  - **503** with `Retry-After` means forecasts are unreachable after the client's retries.
+- **Readiness separates hard and soft dependencies.** The database down makes it unready (503). The forecasting API
+  down only makes it *degraded* (still 200), because NESO-based scheduling still works, so an orchestrator keeps it in
+  service.
+- **The image** ([Dockerfile](Dockerfile), target `api`) is built from the locked packages and runs on the chiseled
+  ASP.NET image: no shell, non-root (uid 1654), 191 MB.

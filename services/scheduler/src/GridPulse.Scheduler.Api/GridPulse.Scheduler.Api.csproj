@@ -5,7 +5,7 @@
     <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
+    <ProjectReference Include="..\GridPulse.Scheduler.Data\GridPulse.Scheduler.Data.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="GridPulse.Scheduler.Api.Tests" />
