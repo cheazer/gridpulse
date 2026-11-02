@@ -3,7 +3,10 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phase 1 complete: live ingestion from three sources, two years of history loaded, and a data-quality report. Phase 2, forecasting, in progress ([ADR-0011](docs/adr/0011-forecasting-design.md)). This README grows into the full write-up in Phase 5.
+> **Status:** Phases 1 and 2 complete: live ingestion from three sources with two years of history, and
+> day-ahead and 48-hour forecasts of demand and carbon intensity, backtested against NESO, stored by a scheduled
+> job, served by an API and retrained behind a champion/challenger gate. Next: Phase 3, the carbon-aware
+> scheduling API and dashboard. This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -23,6 +26,7 @@ deploy/              Docker Compose (local) and Helm (k8s)
 observability/       OpenTelemetry collector, Prometheus, Grafana
 loadtest/k6/         Load tests for the scheduling API
 docs/adr/            Architecture decision records
+docs/results/        Data-quality, forecast-accuracy and experiment reports (generated, committed)
 ```
 
 ## Running locally
@@ -118,6 +122,46 @@ settled figure.
 **The number to beat in Phase 2:** NESO's day-ahead demand forecast, as published by 13:00 the day before, has
 a **MAPE of 2.74%** (MAE 685 MW) over 34,737 half-hours, against 8.45% for a seasonal-naive forecast.
 
+## Forecasting results
+
+Rolling-origin backtests over **Oct 2025 to Sep 2026**: a fresh model each month, trained only on what was known
+at the time, forecasting each day as of 13:00 UK time the day before (NESO's own cut-off). Every forecast is
+scored on the same half-hours. Features are built strictly as of the issue time, and leakage tests prove it
+([ADR-0010](docs/adr/0010-day-ahead-benchmark.md), [ADR-0011](docs/adr/0011-forecasting-design.md)).
+
+| Day-ahead | GridPulse | NESO | Seasonal naive | P10-P90 coverage |
+|---|---:|---:|---:|---:|
+| National demand, MAPE ([report](docs/results/forecast-accuracy.md)) | 4.23% | **2.85%** | 8.36% | 79.7% |
+| Carbon intensity, MAE ([report](docs/results/carbon-accuracy.md)) | 23.2 g/kWh | 9.9 g/kWh* | 54.3 g/kWh | 80% |
+
+\* NESO's *final* carbon forecast, made shortly before each half-hour: the only NESO forecast recorded for this
+period, so a ceiling rather than a like-for-like comparison.
+
+- **The demand model does not beat NESO yet.** It halves seasonal naive's error. Ten variants compared on a
+  separate validation window (per-location solar, a ratio target, week-on-week features, hyperparameters) found
+  nothing better, and the test months were scored only once
+  ([experiments](docs/results/demand-model-experiments.md)). The gap is largest at midday, when embedded solar cuts
+  demand; NESO forecasts it directly. More history and a "NESO + correction" model are Phase 5 work.
+- **The intervals are honest.** Plain quantile models covered only 48% of actuals out of sample; conformalised
+  quantile regression brings the P10-P90 band to about 80%.
+- **What is served** is a rolling model covering every lead time from 0 to 48 hours. It scores about the same
+  (demand 4.37%, carbon 23.6 g/kWh: [demand](docs/results/forecast-accuracy-rolling.md),
+  [carbon](docs/results/carbon-accuracy-rolling.md)). Demand error doesn't fall at short leads yet, a known
+  limitation.
+
+### Running the forecasts
+
+```bash
+docker compose up -d                                      # includes MLflow (:5000) and the forecasting API (:8000)
+docker compose --profile jobs run --rm train-job          # retrain, gate against the champion, register
+docker compose --profile jobs run --rm forecast-job       # champion -> next 48 hours -> grid.model_forecast
+curl http://localhost:8000/v1/forecasts/carbon            # P10/P50/P90 per half-hour; docs at /docs
+```
+
+A retrained model becomes champion only if it is no worse than the current one on data neither has seen, beats
+seasonal naive clearly and has calibrated intervals; overrides are recorded with a reason
+([ADR-0012](docs/adr/0012-model-promotion.md)). Details: [services/forecasting](services/forecasting/README.md).
+
 ## Data sources
 
 | Source | Used for | Licence |
@@ -129,4 +173,13 @@ a **MAPE of 2.74%** (MAE 685 MW) over 34,737 half-hours, against 8.45% for a sea
 
 ## Decisions
 
-See [docs/adr](docs/adr/README.md).
+Twelve architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
+
+- [0004](docs/adr/0004-event-identity-and-time.md): deterministic event IDs and UTC timestamps, so replays and
+  backfills are idempotent.
+- [0010](docs/adr/0010-day-ahead-benchmark.md): the benchmark is NESO's forecast as published by 13:00 the day
+  before, and our model gets the same information cut-off.
+- [0011](docs/adr/0011-forecasting-design.md): as-of features, one LightGBM model across horizons, conformal
+  intervals, forecasts served from a table.
+- [0012](docs/adr/0012-model-promotion.md): a new model replaces the champion only if it is no worse on data
+  neither has seen.
