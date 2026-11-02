@@ -4,6 +4,7 @@ uv run --env-file ../../.env python -m gridpulse_forecasting check-db
 uv run --env-file ../../.env python -m gridpulse_forecasting build-dataset --from 2025-01-01 --to 2025-12-31
 uv run --env-file ../../.env python -m gridpulse_forecasting backtest --task demand --model seasonal-naive
 uv run --env-file ../../.env python -m gridpulse_forecasting backtest --task carbon --model lightgbm-cqr --report r.md
+uv run --env-file ../../.env python -m gridpulse_forecasting train --task all
 uv run --env-file ../../.env python -m gridpulse_forecasting forecast --task all
 
 Set MLFLOW_TRACKING_URI (e.g. http://localhost:5000) to record backtests in MLflow.
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import os
 import sys
 from pathlib import Path
 
@@ -28,7 +30,7 @@ from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON
 from gridpulse_forecasting.report import accuracy_report
 from gridpulse_forecasting.sources import load_sources
 from gridpulse_forecasting.tasks import DEMAND, TASKS, Task
-from gridpulse_forecasting.tracking import log_backtest
+from gridpulse_forecasting.tracking import git_commit, log_backtest
 
 # The first day with two weeks of history behind it, for the 14-day lag.
 FIRST_DAY = dt.date(2024, 11, 13)
@@ -144,20 +146,81 @@ def compare_variants(first: dt.date, only: list[str] | None) -> int:
     return 0
 
 
-def run_forecast(task_names: list[str], issue: str | None, first: dt.date) -> int:
-    """Forecast the next 48 hours for each task and store it, as the forecast job's own login (V7)."""
+def run_forecast(task_names: list[str], issue: str | None) -> int:
+    """Forecast the next 48 hours with each task's champion and store it, as the forecast job's own login (V7)."""
+    from gridpulse_forecasting.registry import load_champion  # MLflow only where the registry is used
+
     db = Database(JobDatabaseSettings(), read_only=False)
     issue_time = pd.Timestamp(issue).tz_convert("UTC") if issue else job.issue_time_now()
     for name in task_names:
-        rows = job.forecast(db, TASKS[name], issue_time, first)
+        champion = load_champion(name)
+        if champion is None:
+            print(f"{name}: no champion in the model registry; run `train --task {name}` first", file=sys.stderr)
+            return 1
+        rows = job.forecast(db, TASKS[name], issue_time, champion)
         stored = job.store(db, rows)
         p50 = rows["p50"]
         print(
-            f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z, "
+            f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z with {champion.label}, "
             f"P50 {p50.min():,.0f} to {p50.max():,.0f} {TASKS[name].unit}",
             flush=True,
         )
     return 0
+
+
+def run_train(task_names: list[str], first: dt.date, promote: str) -> int:
+    """Retrain each task, gate the result against the champion (training.py), register it, maybe promote it."""
+    import mlflow
+
+    from gridpulse_forecasting import registry, training
+
+    if not os.environ.get("MLFLOW_TRACKING_URI"):
+        print("train needs MLFLOW_TRACKING_URI: models are registered in MLflow", file=sys.stderr)
+        return 2
+    db = Database(DatabaseSettings())
+    now = job.issue_time_now()
+    status = 0
+    for name in task_names:
+        task = TASKS[name]
+        _, examples = training.load_rolling(db, task, now, first)
+        current = registry.load_champion(name)
+        outcome = training.challenge(task, examples, now, (current.model, current.training_cutoff) if current else None)
+        promote_it = promote == "always" or (promote == "auto" and outcome.decision.promote)
+
+        mlflow.set_experiment(task.experiment)
+        with mlflow.start_run(run_name=f"train {name} {now:%Y-%m-%d %H:%M}Z"):
+            c = outcome.challenger
+            mlflow.set_tags({"stage": "training", "git_commit": git_commit(), "promoted": str(promote_it)})
+            mlflow.log_params({**outcome.model.params(), "evaluated_since": outcome.evaluated_since.isoformat()})
+            mlflow.log_metrics(
+                {
+                    "challenger_mae": c.mae,
+                    "seasonal_naive_mae": c.naive_mae,
+                    "challenger_coverage_p10_p90": c.coverage,
+                    "evaluation_forecasts": c.forecasts,
+                    **({"champion_mae": outcome.champion_mae} if outcome.champion_mae is not None else {}),
+                }
+            )
+            mlflow.log_text("\n".join(outcome.decision.reasons), "decision.txt")
+            version = registry.register(
+                name,
+                outcome.model,
+                now,
+                {
+                    "git_commit": git_commit(),
+                    "decision": "promoted" if promote_it else "not promoted",
+                    "challenger_mae": f"{c.mae:.3f}",
+                },
+                promote=promote_it,
+            )
+
+        verdict = "PROMOTED to champion" if promote_it else "registered, NOT promoted"
+        print(f"{name}: version {version} {verdict} (evaluated on {c.forecasts:,} unseen forecasts)", flush=True)
+        for reason in outcome.decision.reasons:
+            print(f"  {reason}", flush=True)
+        if promote == "auto" and not outcome.decision.promote:
+            status = 1  # a scheduled retrain that fails its gate should show up as a failed job
+    return status
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -191,18 +254,27 @@ def main(argv: list[str] | None = None) -> int:
     compare = commands.add_parser("compare-variants", help="backtest every experiment variant on the validation months")
     compare.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first UK day")
     compare.add_argument("--only", nargs="+", choices=sorted(variant_models()), help="run just these variants")
-    fc = commands.add_parser("forecast", help="train, forecast the next 48 hours and store it in model_forecast")
+    fc = commands.add_parser("forecast", help="forecast the next 48 hours with the champion and store it")
     fc.add_argument("--task", choices=[*sorted(TASKS), "all"], default="all")
     fc.add_argument("--issue-time", help="ISO timestamp with zone (default: the latest half-hour)")
-    fc.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first training day")
+    tr = commands.add_parser("train", help="retrain, gate against the champion, register in MLflow")
+    tr.add_argument("--task", choices=[*sorted(TASKS), "all"], default="all")
+    tr.add_argument("--from", dest="first", type=dt.date.fromisoformat, default=FIRST_DAY, help="first training day")
+    tr.add_argument(
+        "--promote",
+        choices=["auto", "always", "never"],
+        default="auto",
+        help="auto: only if the gate passes; always: override the gate (say why in the commit); never: register only",
+    )
     args = parser.parse_args(argv)
     if args.command == "check-db":
         return check_db()
     if args.command == "build-dataset":
         return build_dataset(TASKS[args.task], args.first, args.last, args.output)
     if args.command == "forecast":
-        names = sorted(TASKS) if args.task == "all" else [args.task]
-        return run_forecast(names, args.issue_time, args.first)
+        return run_forecast(sorted(TASKS) if args.task == "all" else [args.task], args.issue_time)
+    if args.command == "train":
+        return run_train(sorted(TASKS) if args.task == "all" else [args.task], args.first, args.promote)
     if args.command == "compare-variants":
         return compare_variants(args.first, args.only)
     if args.command == "backtest":
