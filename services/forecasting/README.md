@@ -184,6 +184,8 @@ MLflow):
 - **What's promoted** is a model refit on all data up to now. Every version is registered either way, tagged with
   its training cutoff, git commit, scores and the gate's reasons. `--promote always|never` overrides the gate.
 - A retrain that fails its gate exits non-zero, so a scheduled run shows up as failed.
+- To override the gate for one registered version, with the reason recorded on it in the registry:
+  `promote --task demand --version 1 --reason "..."`. Lowering a threshold after seeing a result isn't an option.
 
 
 ## The API

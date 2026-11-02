@@ -177,3 +177,30 @@ def test_a_registry_error_is_not_mistaken_for_no_champion(monkeypatch: pytest.Mo
 
     with pytest.raises(MlflowException, match="Invalid Host header"):
         registry.load_champion("demand")
+
+
+def test_a_manual_promotion_records_why_and_what_it_replaced(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import mlflow
+
+    from gridpulse_forecasting import registry
+    from gridpulse_forecasting.models import SeasonalNaive
+
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", tmp_path.as_uri())
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
+    monkeypatch.setenv("MLFLOW_REGISTRY_URI", tmp_path.as_uri())
+    mlflow.set_experiment("promote-test")
+    cutoff = pd.Timestamp("2025-04-10T12:00Z")
+    with mlflow.start_run():
+        registry.register("demand", SeasonalNaive(), cutoff, {}, promote=False)  # failed its gate
+
+    with pytest.raises(ValueError, match="needs a reason"):
+        registry.promote_manually("demand", "1", "  ", pd.Timestamp("2025-04-11T09:00Z"))
+    replaced = registry.promote_manually("demand", "1", "coverage 64% on 2 weeks", pd.Timestamp("2025-04-11T09:00Z"))
+
+    champion = registry.load_champion("demand")
+    assert replaced is None
+    assert champion is not None and champion.version == "1"
+    tags = mlflow.MlflowClient().get_model_version("gridpulse-demand", "1").tags
+    assert tags["override_reason"] == "coverage 64% on 2 weeks"
+    assert tags["decision"] == "promoted manually (gate overridden)"
+    assert tags["replaced_champion"] == "none"

@@ -94,3 +94,26 @@ def load_champion(task: str) -> Registered | None:
         training_cutoff=pd.Timestamp(version.tags["training_cutoff"]),
         model=forecaster,
     )
+
+
+def promote_manually(task: str, version: str, reason: str, when: pd.Timestamp) -> str | None:
+    """Make ``version`` the champion despite its gate, recording why on the version itself (ADR-0012).
+
+    Returns the version it replaces, if any. The reason is required: an override nobody can explain later is a
+    gate that was quietly switched off.
+    """
+    if not reason.strip():
+        raise ValueError("a manual promotion needs a reason")
+    name = model_name(task)
+    client = mlflow.MlflowClient()
+    client.get_model_version(name, version)  # fails clearly if there's no such version
+    previous = load_champion(task)
+    for key, value in {
+        "decision": "promoted manually (gate overridden)",
+        "override_reason": reason.strip(),
+        "override_at": when.isoformat(),
+        "replaced_champion": previous.version if previous else "none",
+    }.items():
+        client.set_model_version_tag(name, version, key, value)
+    client.set_registered_model_alias(name, ALIAS, version)
+    return previous.version if previous else None

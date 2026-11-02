@@ -41,6 +41,10 @@ Option 4, plus absolute gates, in `training.py`:
   rejected model can be inspected. `train --promote always` overrides the gate (for example after a deliberate
   method change validated in the backtests); `--promote never` registers without promoting.
 - A scheduled retrain that fails its gate exits non-zero, so it shows up as a failed job.
+- An already-registered version can be promoted past its gate with `promote --task ... --version ... --reason ...`.
+  The reason is required and stored on the version with the time and the champion it replaced, so every override
+  can be explained later. Lowering a threshold after seeing a result is not an option: that is the same overfitting
+  as re-scoring the test months.
 
 ## Consequences
 
@@ -48,5 +52,9 @@ Option 4, plus absolute gates, in `training.py`:
   that without `--promote always`.
 - Retraining costs two fits per task (the challenger, then the final model): about 8 minutes per task on a 2-core
   Codespace. Forecasting no longer trains: it loads the champion and predicts.
+- **First use (2026-11-02):** demand v1, the first demand model, passed accuracy (MAE 49% of seasonal naive's) but
+  its P10-P90 coverage was 64%, just under the 65% floor, on a two-week holdout that included the clock change and
+  half-term. Its 12-month rolling backtest coverage was 78%. Two weeks of strongly autocorrelated half-hours are thin
+  evidence, so it was promoted manually with that reason recorded; the floor stays at 65%.
 - The gate compares point accuracy and calibration, not every metric. A change that trades a little MAE for much
   better intervals would need `--promote always` and a recorded reason.

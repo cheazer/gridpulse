@@ -224,6 +224,21 @@ def run_train(task_names: list[str], first: dt.date, promote: str) -> int:
     return status
 
 
+def run_promote(task_name: str, version: str, reason: str) -> int:
+    """Override the gate for one registered version, with the reason recorded in the registry (ADR-0012)."""
+    from gridpulse_forecasting import registry
+
+    if not os.environ.get("MLFLOW_TRACKING_URI"):
+        print("promote needs MLFLOW_TRACKING_URI", file=sys.stderr)
+        return 2
+    replaced = registry.promote_manually(task_name, version, reason, pd.Timestamp.now(tz="UTC"))
+    print(
+        f"{registry.model_name(task_name)}: v{version} is champion "
+        f"(replacing {'v' + replaced if replaced else 'none'}), reason recorded: {reason}"
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="gridpulse_forecasting")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -267,6 +282,10 @@ def main(argv: list[str] | None = None) -> int:
         default="auto",
         help="auto: only if the gate passes; always: override the gate (say why in the commit); never: register only",
     )
+    pr = commands.add_parser("promote", help="make a registered version champion despite its gate, with a reason")
+    pr.add_argument("--task", choices=sorted(TASKS), required=True)
+    pr.add_argument("--version", required=True, help="the registry version, e.g. 1")
+    pr.add_argument("--reason", required=True, help="why the gate is being overridden; stored on the version")
     args = parser.parse_args(argv)
     if args.command == "check-db":
         return check_db()
@@ -274,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
         return build_dataset(TASKS[args.task], args.first, args.last, args.output)
     if args.command == "forecast":
         return run_forecast(sorted(TASKS) if args.task == "all" else [args.task], args.issue_time)
+    if args.command == "promote":
+        return run_promote(args.task, args.version, args.reason)
     if args.command == "train":
         return run_train(sorted(TASKS) if args.task == "all" else [args.task], args.first, args.promote)
     if args.command == "compare-variants":
