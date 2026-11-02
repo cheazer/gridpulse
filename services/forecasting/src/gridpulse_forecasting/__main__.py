@@ -182,12 +182,13 @@ def run_train(task_names: list[str], first: dt.date, promote: str) -> int:
     status = 0
     for name in task_names:
         task = TASKS[name]
+        # Reach MLflow before spending minutes training: a misconfigured server should fail in seconds.
+        mlflow.set_experiment(task.experiment)
         _, examples = training.load_rolling(db, task, now, first)
         current = registry.load_champion(name)
         outcome = training.challenge(task, examples, now, (current.model, current.training_cutoff) if current else None)
         promote_it = promote == "always" or (promote == "auto" and outcome.decision.promote)
 
-        mlflow.set_experiment(task.experiment)
         with mlflow.start_run(run_name=f"train {name} {now:%Y-%m-%d %H:%M}Z"):
             c = outcome.challenger
             mlflow.set_tags({"stage": "training", "git_commit": git_commit(), "promoted": str(promote_it)})

@@ -13,6 +13,7 @@ import mlflow
 import mlflow.pyfunc
 import pandas as pd
 from mlflow.exceptions import MlflowException
+from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST, ErrorCode
 from mlflow.pyfunc.model import PythonModel
 
 from gridpulse_forecasting.models import Forecaster
@@ -76,8 +77,12 @@ def load_champion(task: str) -> Registered | None:
     client = mlflow.MlflowClient()
     try:
         version = client.get_model_version_by_alias(name, ALIAS)
-    except MlflowException:
-        return None
+    except MlflowException as error:
+        # Only "no such model or alias" means there's no champion. Anything else (MLflow down, refused, misconfigured)
+        # must fail loudly, not masquerade as "run train first".
+        if error.error_code == ErrorCode.Name(RESOURCE_DOES_NOT_EXIST):
+            return None
+        raise
     loaded = mlflow.pyfunc.load_model(f"models:/{name}@{ALIAS}")
     forecaster: Forecaster = loaded.unwrap_python_model().forecaster
     return Registered(

@@ -158,3 +158,19 @@ def test_registry_round_trip_and_champion_alias(monkeypatch: pytest.MonkeyPatch,
     assert champion.label == "gridpulse-demand/v1"
     features = pd.DataFrame({"demand_lag_7d": [25_000.0]})
     assert champion.model.predict(features)["p50"].tolist() == [25_000.0]
+
+
+def test_a_registry_error_is_not_mistaken_for_no_champion(monkeypatch: pytest.MonkeyPatch) -> None:
+    import mlflow
+    from mlflow.exceptions import MlflowException
+
+    from gridpulse_forecasting import registry
+
+    class Refusing:
+        def get_model_version_by_alias(self, name: str, alias: str) -> None:
+            raise MlflowException("Invalid Host header - possible DNS rebinding attack detected")
+
+    monkeypatch.setattr(mlflow, "MlflowClient", Refusing)
+
+    with pytest.raises(MlflowException, match="Invalid Host header"):
+        registry.load_champion("demand")
