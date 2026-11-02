@@ -56,4 +56,11 @@ if docker compose exec -T -e PGPASSWORD="$MLFLOW_DB_PASSWORD" timescaledb \
   echo "FAIL  mlflow can read grid data"; exit 1
 fi
 echo "PASS  mlflow cannot read grid data"
+docker compose exec -T -e PGPASSWORD="$SCHEDULER_DB_PASSWORD" timescaledb \
+  psql -X -q -h localhost -U scheduler -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM grid.carbon_intensity" >/dev/null
+if docker compose exec -T -e PGPASSWORD="$SCHEDULER_DB_PASSWORD" timescaledb \
+     psql -X -q -h localhost -U scheduler -d "$POSTGRES_DB" -c "SELECT 1 FROM grid.demand LIMIT 1" 2>/dev/null; then
+  echo "FAIL  scheduler can read demand"; exit 1
+fi
+echo "PASS  scheduler logs in, reads carbon_intensity, and nothing else"
 echo "db tests passed"

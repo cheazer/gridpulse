@@ -3,9 +3,9 @@ name: scheduler
 on:
   push:
     branches: [main]
-    paths: ["services/scheduler/**", ".editorconfig", ".github/workflows/scheduler.yml"]
+    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/infra.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
   pull_request:
-    paths: ["services/scheduler/**", ".editorconfig", ".github/workflows/scheduler.yml"]
+    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/infra.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
 
 permissions:
   contents: read

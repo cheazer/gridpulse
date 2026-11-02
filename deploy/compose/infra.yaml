@@ -119,6 +119,7 @@ services:
       FORECAST_DB_PASSWORD: ${FORECAST_DB_PASSWORD:?add FORECAST_DB_PASSWORD to .env (see .env.example)}
       FORECAST_JOB_DB_PASSWORD: ${FORECAST_JOB_DB_PASSWORD:?add FORECAST_JOB_DB_PASSWORD to .env (see .env.example)}
       MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:?add MLFLOW_DB_PASSWORD to .env (see .env.example)}
+      SCHEDULER_DB_PASSWORD: ${SCHEDULER_DB_PASSWORD:?add SCHEDULER_DB_PASSWORD to .env (see .env.example)}
     volumes:
       - ./scripts:/scripts:ro
     restart: "no"
