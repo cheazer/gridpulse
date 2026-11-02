@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/GridPulse.Scheduler.Core/GridPulse.Scheduler.Core.csproj" />
     <Project Path="src/GridPulse.Scheduler.Data/GridPulse.Scheduler.Data.csproj" />
+    <Project Path="src/GridPulse.Scheduler.Telemetry/GridPulse.Scheduler.Telemetry.csproj" />
     <Project Path="src/GridPulse.Scheduler.Api/GridPulse.Scheduler.Api.csproj" />
     <Project Path="src/GridPulse.Scheduler.Dashboard/GridPulse.Scheduler.Dashboard.csproj" />
   </Folder>

@@ -1,8 +1,10 @@
 using ApexCharts;
 using GridPulse.Scheduler.Dashboard;
 using GridPulse.Scheduler.Dashboard.Components;
+using GridPulse.Scheduler.Telemetry;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddTelemetry("scheduler-dashboard");
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddApexCharts();
 builder.Services.AddSingleton(TimeProvider.System);

@@ -26,6 +26,7 @@ internal static class Endpoints
     internal static async Task<Results<Ok<ScheduleResponse>, ValidationProblem, ProblemHttpResult>> Schedule(
         ScheduleJobRequest request,
         ICarbonForecasts forecasts,
+        SchedulerMetrics metrics,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
@@ -58,7 +59,9 @@ internal static class Endpoints
         var series = await forecasts.GetAsync(source.Value, request.Region, from, HalfHours.Ceiling(request.Deadline), cancellationToken)
             .ConfigureAwait(false);
 
-        return WindowFinder.Find(series.HalfHours, job, now) switch
+        var outcome = WindowFinder.Find(series.HalfHours, job, now);
+        metrics.Record(source.Value, series.Stale, outcome);
+        return outcome switch
         {
             Scheduled s => TypedResults.Ok(new ScheduleResponse(
                 s.Best,

@@ -9,6 +9,7 @@
     <InternalsVisibleTo Include="GridPulse.Scheduler.Dashboard.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\GridPulse.Scheduler.Telemetry\GridPulse.Scheduler.Telemetry.csproj" />
     <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
   </ItemGroup>
 </Project>
