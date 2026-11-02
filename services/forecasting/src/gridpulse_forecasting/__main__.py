@@ -19,8 +19,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from opentelemetry import trace
 
-from gridpulse_forecasting import job
+from gridpulse_forecasting import job, telemetry
 from gridpulse_forecasting.backtest import run_backtest
 from gridpulse_forecasting.config import DatabaseSettings, JobDatabaseSettings
 from gridpulse_forecasting.dataset import build_day_ahead, build_rolling, rolling_issue_times
@@ -150,21 +151,30 @@ def run_forecast(task_names: list[str], issue: str | None) -> int:
     """Forecast the next 48 hours with each task's champion and store it, as the forecast job's own login (V7)."""
     from gridpulse_forecasting.registry import load_champion  # MLflow only where the registry is used
 
+    # A trace per run, a span per task inside it: how long each step took, what it stored, and the error if one failed.
+    # No metrics: a job that never runs sends none, so the API's gridpulse.forecast.age is what alerts on (step 4.6).
+    tracer = trace.get_tracer(telemetry.SCOPE)
     db = Database(JobDatabaseSettings(), read_only=False)
     issue_time = pd.Timestamp(issue).tz_convert("UTC") if issue else job.issue_time_now()
-    for name in task_names:
-        champion = load_champion(name)
-        if champion is None:
-            print(f"{name}: no champion in the model registry; run `train --task {name}` first", file=sys.stderr)
-            return 1
-        rows = job.forecast(db, TASKS[name], issue_time, champion)
-        stored = job.store(db, rows)
-        p50 = rows["p50"]
-        print(
-            f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z with {champion.label}, "
-            f"P50 {p50.min():,.0f} to {p50.max():,.0f} {TASKS[name].unit}",
-            flush=True,
-        )
+    with tracer.start_as_current_span("forecast job", attributes={"gridpulse.issued_at": issue_time.isoformat()}):
+        for name in task_names:
+            with tracer.start_as_current_span(f"forecast {name}", attributes={"gridpulse.task": name}) as span:
+                champion = load_champion(name)
+                if champion is None:
+                    print(
+                        f"{name}: no champion in the model registry; run `train --task {name}` first", file=sys.stderr
+                    )
+                    span.set_status(trace.StatusCode.ERROR, "no champion")
+                    return 1
+                rows = job.forecast(db, TASKS[name], issue_time, champion)
+                stored = job.store(db, rows)
+                span.set_attributes({"gridpulse.model_version": champion.label, "gridpulse.half_hours": stored})
+            p50 = rows["p50"]
+            print(
+                f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z with {champion.label}, "
+                f"P50 {p50.min():,.0f} to {p50.max():,.0f} {TASKS[name].unit}",
+                flush=True,
+            )
     return 0
 
 
@@ -292,7 +302,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build-dataset":
         return build_dataset(TASKS[args.task], args.first, args.last, args.output)
     if args.command == "forecast":
-        return run_forecast(sorted(TASKS) if args.task == "all" else [args.task], args.issue_time)
+        telemetry.configure("forecast-job")
+        try:
+            return run_forecast(sorted(TASKS) if args.task == "all" else [args.task], args.issue_time)
+        finally:
+            telemetry.flush()  # the process exits next: send the run's spans first
     if args.command == "promote":
         return run_promote(args.task, args.version, args.reason)
     if args.command == "train":

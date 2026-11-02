@@ -30,6 +30,7 @@ Environment variables only, with the same names as the rest of the stack (`.env.
 | `FORECAST_DB_PASSWORD` | none: required | |
 | `FORECAST_JOB_DB_USER` | `forecast_job` | the forecast job's login: reads, and writes `model_forecast` only |
 | `FORECAST_JOB_DB_PASSWORD` | none: required by `forecast` | |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | unset: no telemetry | the OpenTelemetry collector (OTLP/HTTP, e.g. `http://otel-collector:4318`); see [Telemetry](#telemetry) |
 
 Against the running stack, pass the repo's `.env`:
 
@@ -213,3 +214,28 @@ curl "http://localhost:8000/v1/forecasts/carbon?from=2026-10-31T00:00Z&to=2026-1
   every stored forecast records. It's 1 GB, mostly LightGBM, SciPy and pandas; an API-only image without the
   training stack is a Phase 4 item.
 - CI builds the image, starts the API through Compose against a freshly migrated database, and smoke-tests it.
+
+## Telemetry
+
+The API and the forecast job send traces and metrics with [OpenTelemetry](https://opentelemetry.io/docs/languages/python/)
+over OTLP/HTTP ([telemetry.py](src/gridpulse_forecasting/telemetry.py)) when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
+Unset, nothing is configured, and tests and local runs stay quiet.
+
+- **The API**:
+  - **Traces:** a span per request (FastAPI) and per query (psycopg). Requests from the scheduler carry a W3C
+    `traceparent`, so one trace runs from the scheduler's `POST /v1/schedule` through this API to the database.
+  - **Left out of traces:** health probes and their database checks, which Compose and Kubernetes run every few
+    seconds.
+  - **Metrics:** the standard `http.server.request.duration`. It uses the stable semantic conventions, so it has the
+    same name and unit (seconds) as in the .NET and Java services.
+- **`gridpulse.forecast.age`** (seconds, by `task`): how long ago each task's newest forecast was issued.
+  - **When it's read:** from the database at each export, so it keeps growing while nothing new arrives.
+  - **What it's for:** it is the metric to alert on. A job that fails, isn't scheduled, or can't reach the model
+    registry all show up the same way: forecasts getting old.
+- **The forecast job**: a trace per run, with a span per task.
+  - Each task's span records the model version and the half-hours stored, plus its queries and the insert.
+  - The job sends no metrics of its own: a job that never runs can't report that it didn't. The API's forecast age
+    catches that case.
+  - Spans are flushed before the process exits, or a short-lived job would lose them.
+- Tests read the telemetry back through in-memory exporters (`tests/test_telemetry.py`), as a collector would
+  receive it.

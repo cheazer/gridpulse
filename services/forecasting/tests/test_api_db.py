@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -37,3 +39,14 @@ def test_readiness_fails_cleanly_when_the_database_is_unreachable(reader_setting
     with TestClient(create_app(lambda: PostgresRepository(unreachable))) as client:
         assert client.get("/health").status_code == 200
         assert client.get("/ready").status_code == 503
+
+
+def test_newest_issues_are_read_per_task(job_settings: JobDatabaseSettings, reader_settings: DatabaseSettings) -> None:
+    issue = pd.Timestamp.now(tz="UTC").floor("30min") - pd.Timedelta(hours=1)
+    job.store(Database(job_settings, read_only=False), rows(28_000, issue))
+    repository = PostgresRepository(reader_settings)
+    repository.open()
+    try:
+        assert repository.newest_issues()["demand"] == issue.to_pydatetime().astimezone(dt.UTC)
+    finally:
+        repository.close()

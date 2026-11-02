@@ -17,10 +17,16 @@ from typing import Annotated, Any, Protocol
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from opentelemetry import metrics
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.utils import suppress_instrumentation
+from opentelemetry.metrics import CallbackOptions, MeterProvider, Observation
+from opentelemetry.trace import TracerProvider
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from pydantic import AwareDatetime, BaseModel, Field
 
+from gridpulse_forecasting import telemetry
 from gridpulse_forecasting.config import DatabaseSettings
 from gridpulse_forecasting.db import READ_ONLY, SESSION_OPTIONS
 
@@ -61,12 +67,23 @@ class Repository(Protocol):
 
     def ping(self) -> None: ...
 
+    def newest_issues(self) -> dict[str, dt.datetime]: ...
+
 
 LATEST = """
 SELECT valid_from, valid_to, p10, p50, p90, issued_at, model, model_version, unit
   FROM model_forecast_latest
  WHERE task = %(task)s AND valid_from >= %(start)s AND valid_from < %(end)s
  ORDER BY valid_from
+"""
+
+# When each task's newest forecast was issued. Only the last week's chunks are scanned (valid_from is the hypertable's
+# time column, and a forecast is never valid before it's issued); anything older is long past stale anyway.
+NEWEST_ISSUES = """
+SELECT task, max(issued_at) AS issued_at
+  FROM model_forecast
+ WHERE valid_from >= now() - interval '7 days'
+ GROUP BY task
 """
 
 
@@ -102,8 +119,14 @@ class PostgresRepository:
             return cur.fetchall()
 
     def ping(self) -> None:
-        with self._pool.connection(timeout=2) as conn:
+        # Not traced: probes call it every few seconds, and their request spans are left out too.
+        with suppress_instrumentation(), self._pool.connection(timeout=2) as conn:
             conn.execute("SELECT 1")
+
+    def newest_issues(self) -> dict[str, dt.datetime]:
+        # Not traced: the metric reader calls it on every export, outside any request.
+        with suppress_instrumentation(), self._pool.connection(timeout=2) as conn:
+            return {task: issued for task, issued in conn.execute(NEWEST_ISSUES).fetchall()}
 
 
 def get_repository(request: Request) -> Repository:
@@ -115,8 +138,12 @@ def get_repository(request: Request) -> Repository:
 RepositoryDep = Annotated[Repository, Depends(get_repository)]
 
 
-def create_app(repository_factory: Callable[[], Repository] | None = None) -> FastAPI:
-    """The app; tests pass a fake repository, production builds one from the environment."""
+def create_app(
+    repository_factory: Callable[[], Repository] | None = None,
+    tracer_provider: TracerProvider | None = None,
+    meter_provider: MeterProvider | None = None,
+) -> FastAPI:
+    """The app; tests pass a fake repository and their own telemetry providers, production uses the environment."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -134,6 +161,13 @@ def create_app(repository_factory: Callable[[], Repository] | None = None) -> Fa
         summary="Day-ahead and 48-hour forecasts of GB national demand and carbon intensity, with P10-P90 bands.",
         lifespan=lifespan,
     )
+
+    # A span and the standard http.server.* metrics per request. Health probes aren't traced: Kubernetes calls them
+    # every few seconds, and they'd bury the requests that matter.
+    FastAPIInstrumentor.instrument_app(
+        app, excluded_urls="/health,/ready", tracer_provider=tracer_provider, meter_provider=meter_provider
+    )
+    _observe_forecast_age(app, meter_provider)
 
     @app.get("/health", tags=["ops"])
     def health() -> dict[str, str]:
@@ -180,4 +214,32 @@ def create_app(repository_factory: Callable[[], Repository] | None = None) -> Fa
     return app
 
 
+def _observe_forecast_age(app: FastAPI, meter_provider: MeterProvider | None) -> None:
+    """``gridpulse.forecast.age``: how old each task's newest forecast is, read from the database at each export.
+
+    This is the symptom to alert on (step 4.6). Whatever stops forecasts arriving (the job failing, not being scheduled,
+    the model registry down), the age grows. A metric from the job itself couldn't show a job that never ran.
+    """
+    meter = (meter_provider or metrics.get_meter_provider()).get_meter(telemetry.SCOPE)
+
+    def observe(_: CallbackOptions) -> list[Observation]:
+        repository: Repository | None = getattr(app.state, "repository", None)
+        if repository is None:
+            return []
+        try:
+            newest = repository.newest_issues()
+        except (psycopg.Error, OSError, TimeoutError):
+            return []  # no reading rather than a wrong one; /ready already reports the outage
+        now = dt.datetime.now(dt.UTC)
+        return [Observation((now - issued).total_seconds(), {"task": task}) for task, issued in newest.items()]
+
+    meter.create_observable_gauge(
+        "gridpulse.forecast.age",
+        callbacks=[observe],
+        unit="s",
+        description="Time since each task's newest stored forecast was issued",
+    )
+
+
+telemetry.configure("forecasting-api")
 app = create_app()

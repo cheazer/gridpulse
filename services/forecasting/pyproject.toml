@@ -10,6 +10,11 @@ dependencies = [
     "lightgbm>=4.7,<5",
     # The MLflow client without the server's dependencies; same minor version as the server in Compose.
     "mlflow-skinny>=3.17,<3.18",
+    # Traces and metrics over OTLP/HTTP (step 4.1); the same protocol and port as every other service.
+    "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
+    "opentelemetry-instrumentation-fastapi>=0.66b0",
+    "opentelemetry-instrumentation-psycopg>=0.66b0",
+    "opentelemetry-sdk>=1.45,<2",
     "pandas>=3.0",
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
