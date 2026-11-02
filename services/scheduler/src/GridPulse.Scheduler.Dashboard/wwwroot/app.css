@@ -40,6 +40,8 @@ main {
 }
 
 h1 { margin-top: 0.5rem; }
+/* Blazor focuses the heading after each navigation, for screen readers; no need to draw it. */
+h1:focus { outline: none; }
 .lead { color: var(--muted); max-width: 46rem; }
 .muted { color: var(--muted); }
 .small { font-size: 0.875rem; }
@@ -59,7 +61,7 @@ h1 { margin-top: 0.5rem; }
 .card-value { font-size: 1.75rem; font-weight: 700; }
 .card-value small { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
 
-.chart { background: var(--surface); border-radius: 8px; border: 1px solid #dde3e0; padding: 0.5rem; }
+.chart { min-height: 380px; background: var(--surface); border-radius: 8px; border: 1px solid #dde3e0; padding: 0.5rem; }
 
 .problem { padding: 0.75rem 1rem; background: #fdecea; border-left: 4px solid #b3261e; border-radius: 4px; }
 .warning { padding: 0.75rem 1rem; background: #fff6e0; border-left: 4px solid #b26a00; border-radius: 4px; }
