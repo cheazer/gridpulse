@@ -51,3 +51,6 @@ internal sealed record ScheduleResponse(
     ForecastInfo Forecast);
 
 internal sealed record CarbonTimeline(ForecastInfo Forecast, IReadOnlyList<CarbonForecast> HalfHours);
+
+/// <summary>Measured carbon intensity: what actually happened. Empty for regions, which NESO only forecasts.</summary>
+internal sealed record CarbonActuals(string Region, IReadOnlyList<CarbonReading> HalfHours);

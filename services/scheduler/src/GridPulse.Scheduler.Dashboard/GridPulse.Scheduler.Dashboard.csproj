@@ -2,6 +2,13 @@
      any other client, so it can be deployed and scaled on its own. -->
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <PackageReference Include="Blazor-ApexCharts" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GridPulse.Scheduler.Dashboard.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\GridPulse.Scheduler.Core\GridPulse.Scheduler.Core.csproj" />
   </ItemGroup>
 </Project>

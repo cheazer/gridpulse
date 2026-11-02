@@ -1,0 +1,45 @@
+@using ApexCharts
+
+@* The forecast chart: the last 24 hours' actuals, NESO's forecast, and GridPulse's with its P10-P90 band.
+   Points carry UK wall-clock times and the axis labels them as given (DatetimeUTC), so "02:00" means 02:00 in the
+   UK wherever the viewer is. *@
+<div class="chart">
+    <ApexChart TItem="ChartPoint" Height="360" XAxisType="XAxisType.Datetime" Options="options" Title="@Title">
+        @if (GridPulse.Count > 0)
+        {
+            <ApexRangeAreaSeries TItem="ChartPoint" Items="GridPulse" Name="GridPulse P10-P90"
+                                 XValue="p => p.UkTime" Top="p => p.High ?? p.Value" Bottom="p => p.Low ?? p.Value" />
+            <ApexPointSeries TItem="ChartPoint" Items="GridPulse" Name="GridPulse forecast" SeriesType="SeriesType.Line"
+                             XValue="p => p.UkTime" YValue="p => p.Value" />
+        }
+        <ApexPointSeries TItem="ChartPoint" Items="Neso" Name="NESO forecast" SeriesType="SeriesType.Line"
+                         XValue="p => p.UkTime" YValue="p => p.Value" />
+        @if (Actual.Count > 0)
+        {
+            <ApexPointSeries TItem="ChartPoint" Items="Actual" Name="Actual" SeriesType="SeriesType.Line"
+                             XValue="p => p.UkTime" YValue="p => p.Value" />
+        }
+    </ApexChart>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public required IReadOnlyList<ChartPoint> Neso { get; set; }
+
+    [Parameter] public IReadOnlyList<ChartPoint> GridPulse { get; set; } = [];
+
+    [Parameter] public IReadOnlyList<ChartPoint> Actual { get; set; } = [];
+
+    [Parameter] public string? Title { get; set; }
+
+    private readonly ApexChartOptions<ChartPoint> options = new()
+    {
+        // GridPulse band, GridPulse line, NESO, actual.
+        Colors = ["#9fd8b8", "#1f7a4d", "#3b6fb6", "#1d2327"],
+        Stroke = new Stroke { Curve = Curve.Smooth, Width = new List<double> { 0, 2, 2, 2 } },
+        Fill = new Fill { Opacity = new List<double> { 0.35, 1, 1, 1 } },
+        Xaxis = new XAxis { Labels = new XAxisLabels { DatetimeUTC = true } },
+        Yaxis = [new YAxis { Title = new AxisTitle { Text = "gCO2/kWh" }, DecimalsInFloat = 0 }],
+        Tooltip = new Tooltip { Shared = true, X = new TooltipX { Format = "ddd HH:mm" } },
+        Legend = new Legend { Position = LegendPosition.Top },
+    };
+}

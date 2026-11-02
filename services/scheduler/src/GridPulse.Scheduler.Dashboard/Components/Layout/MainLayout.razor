@@ -2,8 +2,14 @@
 
 <header class="site-header">
     <a href="/" class="brand">GridPulse</a>
-    <span class="tagline">GB grid carbon, forecast and scheduled</span>
+    <nav aria-label="Main">
+        <NavLink href="" Match="NavLinkMatch.All">Grid now</NavLink>
+        <NavLink href="schedule">Schedule a job</NavLink>
+    </nav>
 </header>
 <main>
     @Body
 </main>
+<footer class="site-footer">
+    Data: <a href="https://carbonintensity.org.uk/">NESO Carbon Intensity API</a> (CC BY 4.0) and GridPulse's own forecasts.
+</footer>

@@ -29,6 +29,22 @@ internal sealed class FakeForecasts : ICarbonForecasts
     }
 }
 
+/// <summary>Readings the test controls.</summary>
+internal sealed class FakeActuals : ICarbonActuals
+{
+    public List<CarbonReading> Readings { get; } = [];
+
+    public List<(string Region, DateTimeOffset Start, DateTimeOffset End)> Asked { get; } = [];
+
+    public Task<IReadOnlyList<CarbonReading>> GetAsync(
+        string region, DateTimeOffset windowStart, DateTimeOffset windowEnd, CancellationToken cancellationToken)
+    {
+        Asked.Add((region, windowStart, windowEnd));
+        return Task.FromResult<IReadOnlyList<CarbonReading>>(
+            Readings.Where(r => r.Start >= windowStart && r.Start < windowEnd).ToList());
+    }
+}
+
 internal static class TestApp
 {
     /// <summary>"Now" in the tests: 09:10 UTC, between half-hours on purpose.</summary>
@@ -38,7 +54,7 @@ internal static class TestApp
     /// The real app in memory, with forecasts and the clock replaced. The database and forecasting API settings
     /// point at closed ports, so readiness sees them down and nothing here reaches a real dependency.
     /// </summary>
-    public static WebApplicationFactory<Program> Create(FakeForecasts forecasts) =>
+    public static WebApplicationFactory<Program> Create(FakeForecasts forecasts, FakeActuals? actuals = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
         {
             host.UseSetting("SCHEDULER_DB_PASSWORD", "unused");
@@ -48,6 +64,7 @@ internal static class TestApp
             host.ConfigureTestServices(services =>
             {
                 services.AddSingleton<ICarbonForecasts>(forecasts);
+                services.AddSingleton<ICarbonActuals>(actuals ?? new FakeActuals());
                 services.AddSingleton<TimeProvider>(new FakeTimeProvider(Now));
             });
         });
