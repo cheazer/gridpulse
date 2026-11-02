@@ -1,0 +1,44 @@
+name: end-to-end
+
+# The whole stack from this commit's images: events in through Kafka, the right answer out of the scheduling API and
+# the dashboard (tests/e2e/end_to_end.py). Runs whenever anything it builds or wires together changes.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "services/**"
+      - "!services/**/*.md"
+      - "db/migrations/**"
+      - "schemas/**"
+      - "deploy/compose/**"
+      - "compose.yaml"
+      - "tests/e2e/**"
+      - ".github/workflows/e2e.yml"
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create .env with throwaway passwords
+        run: |
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+      # Everything but the live pollers (public APIs) and the training job (needs a trained model): see the test's
+      # docstring. Compose starts what these depend on: Redpanda, topics, schemas, TimescaleDB, migrations, logins.
+      - name: Build and start the stack
+        run: docker compose up -d --build --wait timescale-sink forecasting-api scheduler-api scheduler-dashboard
+      - name: End-to-end test
+        run: python3 tests/e2e/end_to_end.py
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs timescale-sink forecasting-api scheduler-api scheduler-dashboard migrate db-users

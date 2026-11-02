@@ -3,10 +3,10 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phases 1 and 2 complete: live ingestion from three sources with two years of history, and
-> day-ahead and 48-hour forecasts of demand and carbon intensity, backtested against NESO, stored by a scheduled
-> job, served by an API and retrained behind a champion/challenger gate. Next: Phase 3, the carbon-aware
-> scheduling API and dashboard. This README grows into the full write-up in Phase 5.
+> **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
+> and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
+> champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
+> Next: Phase 4, Kubernetes and observability. This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -51,6 +51,8 @@ docker compose up -d
 | TimescaleDB | `localhost:5432` (credentials from `.env`) |
 | MLflow (experiments, model registry) | http://localhost:5000 |
 | Forecasting API (OpenAPI docs) | http://localhost:8000/docs |
+| Scheduling API (OpenAPI docs) | http://localhost:8100/scalar |
+| Dashboard | http://localhost:8200 |
 
 On start-up four one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
 `schema-init` registers the event schemas with `BACKWARD` compatibility, `migrate` applies the
@@ -71,10 +73,19 @@ docker compose exec timescaledb psql -U gridpulse -d gridpulse -c \
 ```
 `docker compose down -v` stops everything and deletes the data volumes.
 
-To check the whole stack end to end (topics, schemas, a Kafka round trip, TimescaleDB):
+To check the infrastructure (topics, schemas, a Kafka round trip, TimescaleDB):
 
 ```bash
 bash deploy/compose/scripts/smoke-test.sh
+```
+
+To check every service together, run the end-to-end test that CI runs on each change
+([tests/e2e](tests/e2e/end_to_end.py)). It writes made-up forecasts, so run it on a fresh stack, not one holding
+data you want to keep:
+
+```bash
+docker compose up -d --build --wait timescale-sink forecasting-api scheduler-api scheduler-dashboard
+python3 tests/e2e/end_to_end.py
 ```
 
 ### Loading history
@@ -162,6 +173,33 @@ A retrained model becomes champion only if it is no worse than the current one o
 seasonal naive clearly and has calibrated intervals; overrides are recorded with a reason
 ([ADR-0012](docs/adr/0012-model-promotion.md)). Details: [services/forecasting](services/forecasting/README.md).
 
+## Carbon-aware scheduling
+
+A flexible job (a batch run, an EV charge, a heat pump pre-heat) says how long it runs, how much energy it uses and
+when it must finish; the scheduling API finds the start time with the lowest forecast carbon intensity and says how
+much CO2 that saves against starting now, with a likely range. A Blazor dashboard puts it in front of people.
+
+![The dashboard's Grid now page: carbon intensity for Great Britain, actuals, NESO's forecast and GridPulse's with its 80% band](docs/images/dashboard-grid-now.png)
+
+![Scheduling a 3-hour, 50 kWh job: run it at 02:00, saving 1.8 kg of CO2 (22%)](docs/images/dashboard-schedule.png)
+
+- **Exact and fast.** One pass over the forecast with prefix sums, partial half-hours weighted by minutes, checked
+  against a brute-force search on 500 random cases.
+- **Uncertainty carried through.** The saving is worked out at P10, P50 and P90 like with like, so the dashboard
+  can say "likely between 0.9 and 1.8 kg" rather than a single number it can't stand behind.
+- **Two forecast sources.** GridPulse's own (Great Britain, with ranges) through the forecasting API, or NESO's for
+  any of 18 regions straight from TimescaleDB, as a read-only login that can see one table.
+- **Degrades, doesn't fail.** Retries, timeouts and a circuit breaker on every HTTP hop; with the forecasting API
+  down, readiness reports *degraded* and NESO-based scheduling carries on. Errors are RFC 7807 problem details, which
+  the dashboard turns into sentences.
+- **UK time at the edge, UTC everywhere else**, including the clock-change hours that don't exist or happen twice.
+- **Tested end to end.** CI builds every image from the commit, plants a carbon profile with a known cleanest window
+  in Kafka and in the forecast table, and checks it comes out of the scheduling API and the dashboard, through the
+  sink, TimescaleDB and the forecasting API. Only the live pollers and model training sit out: they depend on public
+  APIs and a trained model, which would make the test slow and flaky without testing more of the wiring.
+
+Details: [services/scheduler](services/scheduler/README.md), [ADR-0013](docs/adr/0013-scheduler-design.md).
+
 ## Data sources
 
 | Source | Used for | Licence |
@@ -183,3 +221,5 @@ Thirteen architecture decision records, indexed in [docs/adr](docs/adr/README.md
   intervals, forecasts served from a table.
 - [0012](docs/adr/0012-model-promotion.md): a new model replaces the champion only if it is no worse on data
   neither has seen.
+- [0013](docs/adr/0013-scheduler-design.md): a pure scheduling core behind interfaces, the dashboard as an ordinary
+  API client, and NESO's regional forecasts read from the database as a second source that works without ours.
