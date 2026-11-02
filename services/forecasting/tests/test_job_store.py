@@ -32,8 +32,14 @@ def rows(p50: float, issue: pd.Timestamp = ISSUE) -> pd.DataFrame:
 
 
 def latest(reader: DatabaseSettings) -> pd.DataFrame:
+    # Only this module's window: the database is shared with other integration tests in the session.
     return Database(reader).read_frame(
-        "SELECT issued_at, valid_from, p50 FROM model_forecast_latest WHERE task = 'demand' ORDER BY valid_from"
+        """
+        SELECT issued_at, valid_from, p50 FROM model_forecast_latest
+         WHERE task = 'demand' AND valid_from >= %(start)s AND valid_from < %(end)s
+         ORDER BY valid_from
+        """,
+        {"start": ISSUE.to_pydatetime(), "end": (ISSUE + pd.Timedelta(hours=6)).to_pydatetime()},
     )
 
 

@@ -46,6 +46,7 @@ docker compose up -d
 | Schema Registry | http://localhost:18081 |
 | TimescaleDB | `localhost:5432` (credentials from `.env`) |
 | MLflow (experiments, model registry) | http://localhost:5000 |
+| Forecasting API (OpenAPI docs) | http://localhost:8000/docs |
 
 On start-up four one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
 `schema-init` registers the event schemas with `BACKWARD` compatibility, `migrate` applies the

@@ -1,4 +1,4 @@
-# Machine learning services: the MLflow tracking server and model registry (ADR-0011).
+# Machine learning services (ADR-0011): MLflow, the forecasting API and the forecast job.
 
 services:
   mlflow:
@@ -21,6 +21,47 @@ services:
       timeout: 5s
       retries: 12
     restart: unless-stopped
+
+  # Serves stored forecasts (step 2.6b) as the read-only 'forecasting' login. Docs at http://localhost:8000/docs.
+  forecasting-api:
+    build: &forecasting-build
+      context: ../..
+      dockerfile: services/forecasting/Dockerfile
+      args:
+        GRIDPULSE_VERSION: ${GRIDPULSE_VERSION:-dev}
+    depends_on:
+      db-users:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_HOST: timescaledb
+      TIMESCALE_PORT: "5432" # the container port, not the host port in .env
+      POSTGRES_DB: ${POSTGRES_DB:-gridpulse}
+      FORECAST_DB_PASSWORD: ${FORECAST_DB_PASSWORD:?add FORECAST_DB_PASSWORD to .env (see .env.example)}
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # Trains, forecasts the next 48 hours and stores it (step 2.6a), as the 'forecast_job' login. Not started by
+  # `docker compose up`; run it with  docker compose --profile jobs run --rm forecast-job
+  # Phase 4 schedules it as a Kubernetes CronJob.
+  forecast-job:
+    profiles: [jobs]
+    build: *forecasting-build
+    command: ["python", "-m", "gridpulse_forecasting", "forecast", "--task", "all"]
+    depends_on:
+      db-users:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_HOST: timescaledb
+      TIMESCALE_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-gridpulse}
+      FORECAST_JOB_DB_PASSWORD: ${FORECAST_JOB_DB_PASSWORD:?add FORECAST_JOB_DB_PASSWORD to .env (see .env.example)}
+    restart: "no"
 
 volumes:
   mlflow-artifacts:
