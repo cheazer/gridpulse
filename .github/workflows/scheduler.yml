@@ -3,9 +3,9 @@ name: scheduler
 on:
   push:
     branches: [main]
-    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/infra.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
+    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/**", "compose.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
   pull_request:
-    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/infra.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
+    paths: ["services/scheduler/**", "db/migrations/**", "deploy/compose/**", "compose.yaml", ".editorconfig", ".github/workflows/scheduler.yml"]
 
 permissions:
   contents: read
@@ -31,3 +31,31 @@ jobs:
         run: dotnet build GridPulse.Scheduler.slnx --no-restore --configuration Release
       - name: Tests
         run: dotnet test --solution GridPulse.Scheduler.slnx --no-build --configuration Release
+
+  # The API image, started through Compose with everything it depends on, then probed from outside.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create .env with throwaway passwords
+        run: |
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/"               -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+      - name: Build and start the scheduler API, the forecasting API and the database
+        run: docker compose up -d --build --wait forecasting-api scheduler-api
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:8100/health && break; sleep 2; done
+          # Both dependencies up: ready and healthy.
+          curl -sf http://localhost:8100/ready | tee /tmp/ready.json
+          python3 -c "import json; assert json.load(open('/tmp/ready.json'))['status'] == 'Healthy'"
+          curl -sf http://localhost:8100/v1/regions | python3 -c "import json,sys; assert len(json.load(sys.stdin)) == 18"
+          # A fresh database holds no forecasts: a 422 saying so, not a made-up window.
+          code=$(curl -s -o /tmp/schedule.json -w "%{http_code}" -X POST http://localhost:8100/v1/schedule             -H "Content-Type: application/json"             -d "{\"durationMinutes\": 60, \"energyKwh\": 10, \"deadline\": \"$(date -u -d '+12 hours' +%Y-%m-%dT%H:%M:%SZ)\", \"source\": \"neso\"}")
+          cat /tmp/schedule.json
+          test "$code" = "422"
+          python3 -c "import json; assert json.load(open('/tmp/schedule.json'))['reason'] == 'no-forecast-coverage'"
+      - name: Runs as a non-root user
+        run: test "$(docker image inspect --format '{{.Config.User}}' gridpulse-scheduler-api)" != "root"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs scheduler-api forecasting-api db-users

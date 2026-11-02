@@ -1,0 +1,24 @@
+# The carbon-aware scheduler (Phase 3, ADR-0013).
+
+services:
+  # The scheduling API. OpenAPI docs at http://localhost:8100/scalar.
+  # The image is chiseled (no shell), so there's no in-container healthcheck: probe /ready from outside, as Kubernetes
+  # will in Phase 4.
+  scheduler-api:
+    build:
+      context: ../../services/scheduler
+      target: api
+    depends_on:
+      db-users:
+        condition: service_completed_successfully
+      forecasting-api:
+        condition: service_started # not healthy: the scheduler still works on NESO's forecasts without it
+    environment:
+      POSTGRES_HOST: timescaledb
+      TIMESCALE_PORT: "5432" # the container port, not the host port in .env
+      POSTGRES_DB: ${POSTGRES_DB:-gridpulse}
+      SCHEDULER_DB_PASSWORD: ${SCHEDULER_DB_PASSWORD:?add SCHEDULER_DB_PASSWORD to .env (see .env.example)}
+      FORECASTING_API_URL: http://forecasting-api:8000
+    ports:
+      - "127.0.0.1:8100:8080"
+    restart: unless-stopped

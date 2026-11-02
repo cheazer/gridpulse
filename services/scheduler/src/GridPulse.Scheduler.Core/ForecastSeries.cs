@@ -1,12 +1,17 @@
+using System.Text.Json.Serialization;
+
 namespace GridPulse.Scheduler.Core;
 
 /// <summary>Whose carbon intensity forecast to schedule against.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ForecastSource>))]
 public enum ForecastSource
 {
     /// <summary>GridPulse's own model (Phase 2): national only, with P10-P90 ranges.</summary>
+    [JsonStringEnumMemberName("gridpulse")]
     GridPulse,
 
     /// <summary>NESO's Carbon Intensity forecast: national or any region, a single value per half-hour.</summary>
+    [JsonStringEnumMemberName("neso")]
     Neso,
 }
 

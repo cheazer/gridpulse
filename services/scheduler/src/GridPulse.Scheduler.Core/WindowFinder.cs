@@ -71,8 +71,11 @@ public static class WindowFinder
     }
 
     /// <summary>
-    /// The saving at each end of the range, like with like: forecast errors are strongly correlated from one
-    /// half-hour to the next, so both windows tend to come in low together or high together.
+    /// The saving's range, like with like: forecast errors are strongly correlated from one half-hour to the next, so
+    /// both windows tend to come in low together or high together. The saving is worked out at each quantile level
+    /// the forecast has (P10 with P10, P50 with P50, P90 with P90) and the range spans all three. Bands are often
+    /// lopsided (a P10 far below the P50, a P90 just above it), so the P10 and P90 savings alone can both fall on the
+    /// same side of the expected one; a range that left the expected saving out would contradict itself.
     /// </summary>
     private static (double? Low, double? High) SavingRange(Window best, Window earliest)
     {
@@ -82,9 +85,8 @@ public static class WindowFinder
             return (null, null);
         }
 
-        var atLow = earliestLow - bestLow;
-        var atHigh = earliestHigh - bestHigh;
-        return (Math.Min(atLow, atHigh), Math.Max(atLow, atHigh));
+        double[] savings = [earliestLow - bestLow, earliest.EmissionsKg - best.EmissionsKg, earliestHigh - bestHigh];
+        return (savings.Min(), savings.Max());
     }
 
     private static Dictionary<DateTimeOffset, CarbonForecast> Index(IReadOnlyList<CarbonForecast> forecast)

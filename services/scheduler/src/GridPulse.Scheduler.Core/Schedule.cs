@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace GridPulse.Scheduler.Core;
 
 /// <summary>
@@ -39,12 +41,15 @@ public sealed record Scheduled(
     double? SavingHighKg,
     bool LimitedByForecast) : ScheduleOutcome;
 
+[JsonConverter(typeof(JsonStringEnumConverter<NotScheduledReason>))]
 public enum NotScheduledReason
 {
     /// <summary>The job is longer than the time between its earliest start (or now) and its deadline.</summary>
+    [JsonStringEnumMemberName("does-not-fit")]
     DoesNotFit,
 
     /// <summary>The job would fit, but no window of that length has a forecast for every half-hour.</summary>
+    [JsonStringEnumMemberName("no-forecast-coverage")]
     NoForecastCoverage,
 }
 

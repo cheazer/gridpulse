@@ -135,6 +135,26 @@ public class WindowFinderTests
     }
 
     [Fact]
+    public void The_saving_range_always_contains_the_expected_saving_even_with_lopsided_bands()
+    {
+        // Found on live data: P10 far below P50, P90 just above it. 1,000 kWh for half an hour, so g/kWh reads as kg:
+        // the P10 saving (80 - 40 = 40 kg) and the P90 saving (165 - 135 = 30 kg) are both below the expected one
+        // (160 - 100 = 60 kg), so a P10-to-P90 range alone would leave the expected saving out.
+        var forecast = new List<CarbonForecast>
+        {
+            new(At(0), 160, low: 80, high: 165),
+            new(At(0.5), 100, low: 40, high: 135),
+        };
+
+        var result = Schedule(forecast, Job(0.5, kwh: 1000, deadline: 1));
+
+        Assert.Equal(60, result.SavingKg, precision: 9);
+        Assert.Equal(30, result.SavingLowKg!.Value, precision: 9); // at P90: 165 - 135
+        Assert.Equal(60, result.SavingHighKg!.Value, precision: 9); // at P50, the expected saving itself
+        Assert.InRange(result.SavingKg, result.SavingLowKg!.Value, result.SavingHighKg!.Value);
+    }
+
+    [Fact]
     public void Point_forecasts_give_a_saving_without_a_range()
     {
         var result = Schedule(Forecast(300, 100), Job(0.5, deadline: 1));
@@ -201,6 +221,11 @@ public class WindowFinderTests
             }
 
             var scheduled = Assert.IsType<Scheduled>(actual);
+            if (scheduled.SavingLowKg is { } low && scheduled.SavingHighKg is { } high)
+            {
+                Assert.InRange(scheduled.SavingKg, low - 1e-9, high + 1e-9);
+            }
+
             Assert.Equal(expectedBest.Value.Start, scheduled.Best.Start);
             Assert.Equal(expectedBest.Value.Intensity, scheduled.Best.Intensity, precision: 9);
         }
