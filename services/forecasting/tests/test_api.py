@@ -30,9 +30,15 @@ def row(valid_from: dt.datetime, issued_at: dt.datetime, p50: float = 30_000) ->
 class FakeRepository:
     """Answers like model_forecast_latest would, and records what it was asked."""
 
-    def __init__(self, rows: list[dict[str, Any]] | None = None, healthy: bool = True) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]] | None = None,
+        healthy: bool = True,
+        issues: dict[str, dt.datetime] | None = None,
+    ) -> None:
         self.rows = rows or []
         self.healthy = healthy
+        self.issues = issues or {}
         self.asked: list[tuple[str, dt.datetime, dt.datetime]] = []
 
     def latest(self, task: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
@@ -42,6 +48,10 @@ class FakeRepository:
     def ping(self) -> None:
         if not self.healthy:
             raise psycopg.OperationalError("connection refused")
+
+    def newest_issues(self) -> dict[str, dt.datetime]:
+        self.ping()
+        return self.issues
 
 
 def client_for(repository: FakeRepository) -> Iterator[TestClient]:
