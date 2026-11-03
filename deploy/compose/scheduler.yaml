@@ -1,5 +1,11 @@
 # The carbon-aware scheduler (Phase 3, ADR-0013).
 
+# Every instrumented service sends traces and metrics to the collector (observability.yaml), over OTLP/HTTP.
+x-telemetry: &telemetry
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf # .NET defaults to gRPC; the others already use HTTP
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=compose
+
 services:
   # The scheduling API. OpenAPI docs at http://localhost:8100/scalar.
   # The image is chiseled (no shell), so there's no in-container healthcheck: probe /ready from outside, as Kubernetes
@@ -14,6 +20,7 @@ services:
       forecasting-api:
         condition: service_started # not healthy: the scheduler still works on NESO's forecasts without it
     environment:
+      <<: *telemetry
       POSTGRES_HOST: timescaledb
       TIMESCALE_PORT: "5432" # the container port, not the host port in .env
       POSTGRES_DB: ${POSTGRES_DB:-gridpulse}
@@ -33,6 +40,7 @@ services:
       scheduler-api:
         condition: service_started
     environment:
+      <<: *telemetry
       SCHEDULER_API_URL: http://scheduler-api:8080
     ports:
       - "127.0.0.1:8200:8080"

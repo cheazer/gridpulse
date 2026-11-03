@@ -9,3 +9,4 @@ include:
   - deploy/compose/apps.yaml
   - deploy/compose/ml.yaml
   - deploy/compose/scheduler.yaml
+  - deploy/compose/observability.yaml

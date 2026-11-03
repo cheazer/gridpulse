@@ -1,5 +1,11 @@
 # Application services. Both Java apps build from services/ingestion/Dockerfile.
 
+# Every instrumented service sends traces and metrics to the collector (observability.yaml), over OTLP/HTTP.
+x-telemetry: &telemetry
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf # .NET defaults to gRPC; the others already use HTTP
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=compose
+
 services:
   ingestion-app:
     build:
@@ -13,6 +19,7 @@ services:
       schema-init:
         condition: service_completed_successfully
     environment:
+      <<: *telemetry
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     restart: unless-stopped
 
@@ -34,6 +41,7 @@ services:
       schema-init:
         condition: service_completed_successfully
     environment:
+      <<: *telemetry
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     restart: "no"
 
@@ -49,6 +57,7 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      <<: *telemetry
       KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
       POSTGRES_HOST: timescaledb
       TIMESCALE_PORT: "5432" # the container port, not the host port in .env

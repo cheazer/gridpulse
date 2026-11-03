@@ -13,6 +13,7 @@ on:
       - "deploy/compose/**"
       - "compose.yaml"
       - "tests/e2e/**"
+      - "observability/**"
       - ".github/workflows/e2e.yml"
   pull_request:
     paths: *paths
@@ -32,13 +33,19 @@ jobs:
               -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" \
               -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/" \
               -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/" \
-              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^GRAFANA_ADMIN_PASSWORD=.*/GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
       # Everything but the live pollers (public APIs) and the training job (needs a trained model): see the test's
       # docstring. Compose starts what these depend on: Redpanda, topics, schemas, TimescaleDB, migrations, logins.
+      # The collector, Prometheus and Tempo receive the services' telemetry, which the test checks too.
       - name: Build and start the stack
-        run: docker compose up -d --build --wait timescale-sink forecasting-api scheduler-api scheduler-dashboard
+        run: >-
+          docker compose up -d --build --wait timescale-sink forecasting-api scheduler-api scheduler-dashboard
+          otel-collector prometheus tempo
       - name: End-to-end test
         run: python3 tests/e2e/end_to_end.py
       - name: Logs on failure
         if: failure()
-        run: docker compose logs timescale-sink forecasting-api scheduler-api scheduler-dashboard migrate db-users
+        run: >-
+          docker compose logs timescale-sink forecasting-api scheduler-api scheduler-dashboard migrate db-users
+          otel-collector prometheus tempo

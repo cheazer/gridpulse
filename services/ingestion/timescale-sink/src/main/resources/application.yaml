@@ -24,6 +24,13 @@ spring:
       ack-mode: batch # commit offsets after the listener (and so the DB transaction) returns
       concurrency: 3
 
+management:
+  metrics:
+    distribution:
+      # Buckets for batch durations, so dashboards and alerts can use percentiles, not just the mean.
+      percentiles-histogram:
+        gridpulse.sink.batch: true
+
 gridpulse:
   sink:
     aggregates: # ADR-0009: refresh daily views for writes older than the policy reaches
