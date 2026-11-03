@@ -1,0 +1,9 @@
+apiVersion: v2
+name: gridpulse-dev
+description: >-
+  What the GridPulse chart needs around it, for development and CI on one cluster (kind): TimescaleDB and Redpanda as
+  StatefulSets, MLflow, and the observability stack (collector, Prometheus, Tempo, Grafana). Production would use
+  managed services or operators instead (ADR-0015).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

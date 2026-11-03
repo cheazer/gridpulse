@@ -1,0 +1,103 @@
+{{- $ctx := dict "root" . "component" "mlflow" -}}
+{{- $v := .Values.mlflow -}}
+# MLflow tracking server and model registry (ADR-0011): run metadata in its own 'mlflow' database, as its own login;
+# model artifacts on a persistent volume. One replica: the artifact volume is ReadWriteOnce.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ $v.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # the volume can't be mounted by the old and new pod at once
+  selector:
+    matchLabels:
+      {{- include "dev.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dev.labels" $ctx | nindent 8 }}
+    spec:
+      {{- include "dev.podSecurity" (dict "user" 10001) | nindent 6 }}
+      # The mlflow login is created by the GridPulse chart's db-users hook, which runs after this chart. Waiting for
+      # it here, rather than letting MLflow crash until it exists, keeps the two installs independent of each other.
+      initContainers:
+        - name: wait-for-login
+          image: {{ .Values.timescaledb.image }}
+          command:
+            - sh
+            - -c
+            - until psql "$MLFLOW_BACKEND_STORE_URI" -Atc 'select 1' >/dev/null 2>&1; do echo "waiting for the mlflow login"; sleep 5; done
+          env:
+            {{- include "dev.mlflowEnv" . | nindent 12 }}
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+          {{- include "dev.containerSecurity" . | nindent 10 }}
+      containers:
+        - name: mlflow
+          image: {{ include "dev.image" (dict "root" . "repository" $v.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # As in Compose, plus one worker: MLflow's default of four used over 2 GB in the Codespace. Host headers are
+          # checked against DNS rebinding; jobs call it as mlflow:5000.
+          command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000", "--workers", "1",
+                    "--artifacts-destination", "/mlartifacts", "--serve-artifacts",
+                    "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000"]
+          env:
+            {{- include "dev.mlflowEnv" . | nindent 12 }}
+          ports:
+            - { name: http, containerPort: 5000 }
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          {{- include "dev.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: artifacts, mountPath: /mlartifacts }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: artifacts, persistentVolumeClaim: { claimName: mlflow-artifacts } }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "dev.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - { name: http, port: 5000, targetPort: http }
+{{- define "dev.mlflowEnv" -}}
+- name: MLFLOW_DB_PASSWORD
+  valueFrom: { secretKeyRef: { name: {{ .Values.secretName }}, key: MLFLOW_DB_PASSWORD } }
+# Kubernetes expands $(MLFLOW_DB_PASSWORD) from the variable above (URL-safe, see .env.example).
+- name: MLFLOW_BACKEND_STORE_URI
+  value: postgresql://mlflow:$(MLFLOW_DB_PASSWORD)@timescaledb:5432/mlflow
+{{- end -}}

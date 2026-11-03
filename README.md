@@ -6,7 +6,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 > **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
 > and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
 > champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm chart, done). This README grows into the full write-up in Phase 5.
+> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm charts with the whole system on kind, done). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -214,8 +214,15 @@ Details: [services/scheduler](services/scheduler/README.md), [ADR-0013](docs/adr
 - **CronJobs** for the forecast job (every 6 hours) and retraining (weekly).
 - **No passwords in Helm:** a script creates the Secret from `.env`.
 
-TimescaleDB, Kafka and MLflow are addresses in the chart's values, as managed services would be in production.
-The [chart's README](deploy/helm/README.md) explains the design and how to install it.
+TimescaleDB, Kafka and MLflow are addresses in the chart's values, as managed services would be in production. A second
+chart, `gridpulse-dev`, provides them in the cluster for development, with the observability stack (ADR-0015). One
+script brings up the whole system on a local [kind](https://kind.sigs.k8s.io/) cluster:
+
+```bash
+bash deploy/kind/up.sh
+```
+
+The [charts' README](deploy/helm/README.md) explains the design.
 
 ## Observability
 

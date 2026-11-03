@@ -5,9 +5,9 @@ name: helm
 on:
   push:
     branches: [main]
-    paths: ["deploy/helm/**", ".github/workflows/helm.yml"]
+    paths: ["deploy/helm/**", "deploy/kind/**", "observability/**", ".github/workflows/helm.yml"]
   pull_request:
-    paths: ["deploy/helm/**", ".github/workflows/helm.yml"]
+    paths: ["deploy/helm/**", "deploy/kind/**", "observability/**", ".github/workflows/helm.yml"]
 
 permissions:
   contents: read
@@ -33,5 +33,19 @@ jobs:
             | tar -xz kubeconform
           helm template gridpulse deploy/helm/gridpulse --set image.tag=ci --set telemetry.otlpEndpoint=http://collector:4318 \
             | ./kubeconform -strict -summary
-      - name: The secrets script parses
-        run: bash -n deploy/helm/create-secrets.sh
+      - name: The development chart lints and renders valid objects, with the configs from observability/
+        run: |
+          files=(
+            --set-file observability.config.collector=observability/otel-collector/config.yaml
+            --set-file observability.config.prometheus=observability/prometheus/prometheus.yml
+            --set-file observability.config.tempo=observability/tempo/tempo.yaml
+            --set-file observability.config.grafanaDatasources=observability/grafana/provisioning/datasources/datasources.yaml
+            --set-file observability.config.grafanaDashboardProviders=observability/grafana/provisioning/dashboards/dashboards.yaml
+            --set-file observability.dashboards.gridpulseOverview=observability/grafana/dashboards/gridpulse-overview.json
+          )
+          helm lint --strict deploy/helm/gridpulse-dev --set image.tag=ci "${files[@]}"
+          helm template gridpulse-dev deploy/helm/gridpulse-dev --set image.tag=ci "${files[@]}" | ./kubeconform -strict -summary
+      - name: The scripts parse
+        run: |
+          bash -n deploy/helm/create-secrets.sh
+          bash -n deploy/kind/up.sh

@@ -1,0 +1,118 @@
+{{- $o := .Values.observability -}}
+# The observability stack of ADR-0014, from the same configuration files as Compose (observability/, passed with
+# --set-file). Each config's checksum is a pod annotation, so changing a file and upgrading restarts that pod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-config
+  labels:
+    {{- include "dev.labels" (dict "root" . "component" "observability") | nindent 4 }}
+data:
+  collector.yaml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.collector" "value" $o.config.collector) | nindent 4 }}
+  prometheus.yml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.prometheus" "value" $o.config.prometheus) | nindent 4 }}
+  tempo.yaml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.tempo" "value" $o.config.tempo) | nindent 4 }}
+  datasources.yaml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.grafanaDatasources" "value" $o.config.grafanaDatasources) | nindent 4 }}
+  dashboards.yaml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.grafanaDashboardProviders" "value" $o.config.grafanaDashboardProviders) | nindent 4 }}
+  gridpulse-overview.json: |
+    {{- include "dev.requiredFile" (dict "name" "observability.dashboards.gridpulseOverview" "value" $o.dashboards.gridpulseOverview) | nindent 4 }}
+{{- range $c := list
+      (dict "name" "otel-collector" "user" 10001 "values" $o.collector
+            "args" (list "--config=/etc/otelcol/collector.yaml") "mounts" (list (dict "key" "collector.yaml" "path" "/etc/otelcol/collector.yaml"))
+            "ports" (list (dict "name" "otlp-http" "port" 4318) (dict "name" "otlp-grpc" "port" 4317) (dict "name" "metrics" "port" 8889) (dict "name" "self-metrics" "port" 8888) (dict "name" "health" "port" 13133))
+            "probe" (dict "path" "/" "port" "health") "data" "")
+      (dict "name" "prometheus" "user" 65534 "values" $o.prometheus
+            "args" (list "--config.file=/etc/prometheus/prometheus.yml" "--storage.tsdb.path=/prometheus" (printf "--storage.tsdb.retention.time=%s" $o.prometheus.retention))
+            "mounts" (list (dict "key" "prometheus.yml" "path" "/etc/prometheus/prometheus.yml"))
+            "ports" (list (dict "name" "http" "port" 9090)) "probe" (dict "path" "/-/ready" "port" "http") "data" "/prometheus")
+      (dict "name" "tempo" "user" 10001 "values" $o.tempo
+            "args" (list "-config.file=/etc/tempo/tempo.yaml") "mounts" (list (dict "key" "tempo.yaml" "path" "/etc/tempo/tempo.yaml"))
+            "ports" (list (dict "name" "http" "port" 3200) (dict "name" "otlp-http" "port" 4318)) "probe" (dict "path" "/ready" "port" "http") "data" "/var/tempo")
+      (dict "name" "grafana" "user" 472 "values" $o.grafana "args" (list)
+            "mounts" (list (dict "key" "datasources.yaml" "path" "/etc/grafana/provisioning/datasources/datasources.yaml")
+                           (dict "key" "dashboards.yaml" "path" "/etc/grafana/provisioning/dashboards/dashboards.yaml")
+                           (dict "key" "gridpulse-overview.json" "path" "/etc/grafana/dashboards/gridpulse-overview.json"))
+            "ports" (list (dict "name" "http" "port" 3000)) "probe" (dict "path" "/api/health" "port" "http") "data" "/var/lib/grafana") }}
+{{- $ctx := dict "root" $ "component" $c.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $c.name }}
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dev.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dev.labels" $ctx | nindent 8 }}
+      annotations:
+        checksum/config: {{ $o | toJson | sha256sum }}
+    spec:
+      {{- include "dev.podSecurity" (dict "user" $c.user) | nindent 6 }}
+      containers:
+        - name: {{ $c.name }}
+          image: {{ $c.values.image }}
+          {{- with $c.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if eq $c.name "grafana" }}
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $.Values.secretName }}, key: GRAFANA_ADMIN_PASSWORD } }
+            # As in Compose: viewing needs no login, editing needs the admin one.
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: Viewer }
+            - { name: GF_ANALYTICS_REPORTING_ENABLED, value: "false" }
+            - { name: GF_ANALYTICS_CHECK_FOR_UPDATES, value: "false" }
+            - { name: GF_LOG_MODE, value: console }
+          {{- end }}
+          ports:
+            {{- range $p := $c.ports }}
+            - { name: {{ $p.name }}, containerPort: {{ $p.port }} }
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: {{ $c.probe.path }}, port: {{ $c.probe.port }} }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $c.values.resources | nindent 12 }}
+          {{- include "dev.containerSecurity" $ | nindent 10 }}
+          volumeMounts:
+            {{- range $m := $c.mounts }}
+            - { name: config, mountPath: {{ $m.path }}, subPath: {{ $m.key }} }
+            {{- end }}
+            {{- with $c.data }}
+            - { name: data, mountPath: {{ . }} }
+            {{- end }}
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: config, configMap: { name: observability-config } }
+        {{- if $c.data }}
+        - { name: data, emptyDir: { sizeLimit: 1Gi } }
+        {{- end }}
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $c.name }}
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "dev.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    {{- range $p := $c.ports }}
+    - { name: {{ $p.name }}, port: {{ $p.port }}, targetPort: {{ $p.name }} }
+    {{- end }}
+{{- end }}
