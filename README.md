@@ -63,6 +63,8 @@ TimescaleDB migrations in [db/migrations](db/migrations) with Flyway, and `db-us
 which owns its own `mlflow` database) with passwords from
 `.env`. All four are idempotent. `migrate` and `db-users` run one image, built from [db/Dockerfile](db/Dockerfile)
 with the migrations inside it, so Kubernetes runs exactly the same schema version as Compose.
+`redpanda-init` and `schema-init` likewise run one image, from
+[deploy/kafka-init/Dockerfile](deploy/kafka-init/Dockerfile), with the topic script and event schemas inside it.
 
 Then `ingestion-app` polls the live Carbon Intensity API (on start-up and every half-hour) and `timescale-sink`
 writes the events to TimescaleDB. The first build of the two Java images takes a few minutes. A minute after
