@@ -1,0 +1,74 @@
+# Development infrastructure for the GridPulse chart. Install it in the same namespace: Services have the plain names
+# the GridPulse chart and the observability configs expect (timescaledb, redpanda, mlflow, otel-collector, ...), so one
+# install per namespace. deploy/kind/up.sh installs both charts.
+
+# GridPulse's own images (MLflow with a PostgreSQL driver, and the Kafka init image), from the same build as the apps.
+image:
+  registry: ""
+  tag: "" # required
+  pullPolicy: IfNotPresent
+
+# Created by deploy/helm/create-secrets.sh; this chart reads POSTGRES_*, MLFLOW_DB_PASSWORD and GRAFANA_ADMIN_PASSWORD.
+secretName: gridpulse-secrets
+
+database:
+  name: gridpulse
+
+timescaledb:
+  image: timescale/timescaledb:2.30.2-pg17
+  storage: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+redpanda:
+  image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+  storage: 2Gi
+  memory: 768M # Redpanda's own allocation (--memory); the container limit leaves room on top
+  resources:
+    requests: { cpu: 100m, memory: 896Mi }
+    limits: { memory: 1280Mi }
+
+mlflow:
+  repository: gridpulse-mlflow
+  storage: 1Gi # model artifacts
+  resources:
+    # Measured on kind: one worker passes 768Mi while starting up and is OOM-killed there.
+    requests: { cpu: 50m, memory: 512Mi }
+    limits: { memory: 1536Mi }
+
+kafkaInit:
+  repository: gridpulse-kafka-init
+
+# The configuration files in observability/, passed in by up.sh with --set-file so Compose and Kubernetes share one
+# copy. Telemetry storage is an emptyDir: development data that a restart may lose.
+observability:
+  config:
+    collector: ""
+    prometheus: ""
+    tempo: ""
+    grafanaDatasources: ""
+    grafanaDashboardProviders: ""
+  dashboards:
+    gridpulseOverview: ""
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.162.0
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 384Mi }
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    retention: 2d
+    resources:
+      requests: { cpu: 50m, memory: 256Mi }
+      limits: { memory: 768Mi }
+  tempo:
+    image: grafana/tempo:2.10.8
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 512Mi }
+  grafana:
+    image: grafana/grafana:13.2.4
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 384Mi }

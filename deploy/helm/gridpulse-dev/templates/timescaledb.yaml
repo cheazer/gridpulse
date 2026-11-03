@@ -1,0 +1,81 @@
+{{- $ctx := dict "root" . "component" "timescaledb" -}}
+{{- $v := .Values.timescaledb -}}
+# TimescaleDB, one replica with a persistent volume. A StatefulSet, not a Deployment: its pod keeps its name and its
+# volume across restarts, and is never run twice at once against the same data.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: timescaledb
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "dev.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dev.labels" $ctx | nindent 8 }}
+    spec:
+      # The image's postgres user (Alpine's uid 70), started directly rather than by the entrypoint dropping from root.
+      {{- include "dev.podSecurity" (dict "user" 70) | nindent 6 }}
+      containers:
+        - name: timescaledb
+          image: {{ $v.image }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.database.name | quote }}
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: {{ .Values.secretName }}, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.secretName }}, key: POSTGRES_PASSWORD } }
+            # A subdirectory: a fresh volume's root may hold lost+found, and initdb wants an empty directory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: TIMESCALEDB_TELEMETRY
+              value: "off"
+            # timescaledb-tune sizes PostgreSQL's memory settings from this, not from the node's memory.
+            - name: TS_TUNE_MEMORY
+              value: {{ $v.resources.limits.memory | replace "Gi" "GB" | replace "Mi" "MB" | quote }}
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          startupProbe:
+            exec: { command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+            periodSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            exec: { command: ["sh", "-c", "pg_isready -h 127.0.0.1 -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""] }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          {{- include "dev.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: run, mountPath: /var/run/postgresql } # the server's socket and lock files
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: run, emptyDir: {} }
+        - { name: tmp, emptyDir: {} }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ $v.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+  labels:
+    {{- include "dev.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "dev.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }

@@ -21,3 +21,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0012](0012-model-promotion.md) | Model promotion: champion and challenger compared on data neither has seen | Accepted |
 | [0013](0013-scheduler-design.md) | Scheduler design: .NET Minimal APIs, forecasts over HTTP, a separate Blazor dashboard | Accepted |
 | [0014](0014-observability.md) | Observability: OpenTelemetry everywhere, one collector, Prometheus, Tempo and Grafana | Accepted |
+| [0015](0015-kubernetes-packaging.md) | Kubernetes packaging: two Helm charts, init images, and the databases in the cluster for development | Accepted |

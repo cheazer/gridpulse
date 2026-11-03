@@ -1,7 +1,22 @@
-# GridPulse Helm chart
+# GridPulse Helm charts
 
-[gridpulse/](gridpulse) deploys GridPulse's own services to Kubernetes, from the same images as Compose. Only the
-configuration differs.
+Two charts, installed in one namespace (ADR-0015):
+- [gridpulse/](gridpulse): GridPulse's own services, from the same images as Compose. Only the configuration differs.
+- [gridpulse-dev/](gridpulse-dev): what those services need around them, for development and CI. TimescaleDB and
+  Redpanda as StatefulSets with persistent volumes, MLflow, and the observability stack.
+
+## The whole system on kind
+
+```bash
+bash deploy/kind/up.sh                  # build, create the cluster, load the images, install both charts
+SKIP_BUILD=1 bash deploy/kind/up.sh     # the same with the images Compose has already built
+kind delete cluster --name gridpulse    # remove it all
+```
+
+The script needs docker, kind, kubectl, helm and a `.env`, and is safe to re-run: it upgrades both releases. It needs
+about 5 GB of memory. In a Codespace, stop Compose first (`docker compose stop` keeps its data).
+
+## The gridpulse chart
 
 | Workload | Kind | Notes |
 |---|---|---|
@@ -15,10 +30,10 @@ configuration differs.
 | `train-job` | CronJob, Mondays | |
 
 TimescaleDB, Kafka (Redpanda) and MLflow are **not** in the chart: their addresses are values (`database.*`,
-`kafka.bootstrapServers`, `mlflow.trackingUri`), as a managed database or Kafka would be in production. Step 4.4
-provides them in the cluster for development.
+`kafka.bootstrapServers`, `mlflow.trackingUri`), as a managed database or Kafka would be in production. The
+`gridpulse-dev` chart provides them for development.
 
-## Install
+### Install on its own
 
 ```bash
 bash deploy/helm/create-secrets.sh gridpulse         # the Secret, from .env
@@ -28,7 +43,7 @@ helm install gridpulse deploy/helm/gridpulse -n gridpulse --wait --set image.tag
 `image.tag` is required: every image in a release comes from one build. `image.registry` prefixes them (empty for
 images loaded into kind with `kind load docker-image`).
 
-## How it's put together
+### How it's put together
 
 - **No passwords in Helm.** [create-secrets.sh](create-secrets.sh) creates the `gridpulse-secrets` Secret from
   `.env`, outside the chart, so passwords never appear in values, rendered manifests or Helm's release history. Each
@@ -53,3 +68,20 @@ images loaded into kind with `kind load docker-image`).
   (`MaxRAMPercentage=75`).
 - **Telemetry.** The same `OTEL_*` contract as Compose (ADR-0014). `telemetry.otlpEndpoint` names the collector; the
   pod and namespace are added to every span and metric's resource attributes.
+
+## The gridpulse-dev chart
+
+| Component | Kind | Notes |
+|---|---|---|
+| `timescaledb` | StatefulSet, 2 Gi volume | Runs as its own `postgres` user (70); `fsGroup` makes the volume writable |
+| `redpanda` | StatefulSet, 2 Gi volume | Dev-container mode, advertised as `redpanda:9092` |
+| `kafka-init` | Job, `post-install`/`post-upgrade` hook | Waits for the broker, then creates the topics and registers the schemas (the `gridpulse-kafka-init` image) |
+| `mlflow` | Deployment, 1 Gi artifact volume | An init container waits for its login, which the `gridpulse` chart's `db-users` hook creates |
+| `otel-collector`, `prometheus`, `tempo`, `grafana` | Deployments | Configured from `observability/`, passed in with `--set-file`; telemetry on emptyDir |
+
+- **Plain Service names.** Services are named as the `gridpulse` chart's defaults and the observability configs
+  expect (`timescaledb`, `redpanda`, `otel-collector`, ...), so it's one install per namespace.
+- **Restricted too.** The same Pod Security settings as the `gridpulse` chart. Nothing starts as root, the databases
+  included.
+- **Not for production.** One replica of everything, no backups, no TLS. Production would use managed services or
+  operators behind the same `gridpulse` chart values (ADR-0015).
