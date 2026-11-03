@@ -25,8 +25,10 @@ if [[ ${SKIP_BUILD:-0} == 1 ]]; then
 else
   step "build images"
   # One at a time: building them in parallel runs a small machine (a Codespace, a CI runner) out of memory.
+  # A failed build gets one more try after a pause: registries rate-limit base-image pulls (429 Too Many Requests)
+  # often enough to fail a CI run that has nothing wrong with it.
   for service in "${SERVICES[@]}"; do
-    docker compose build "$service"
+    docker compose build "$service" || { echo "retrying $service in 60s"; sleep 60; docker compose build "$service"; }
   done
 fi
 
