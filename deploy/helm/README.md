@@ -13,14 +13,16 @@ SKIP_BUILD=1 bash deploy/kind/up.sh     # the same with the images Compose has a
 kind delete cluster --name gridpulse    # remove it all
 ```
 
-The script needs docker, kind, kubectl, helm and a `.env`, and is safe to re-run: it upgrades both releases. It needs
+The script needs docker, kind, kubectl, helm and a `.env`, and is safe to re-run: it upgrades both releases.
+`GRIDPULSE_SET` passes extra `--set` values to the `gridpulse` chart. The `kind` CI workflow runs it with
+`GRIDPULSE_SET=ingestionApp.enabled=false`, then the end-to-end test with `E2E_PLATFORM=kubernetes`. It needs
 about 5 GB of memory. In a Codespace, stop Compose first (`docker compose stop` keeps its data).
 
 ## The gridpulse chart
 
 | Workload | Kind | Notes |
 |---|---|---|
-| `ingestion-app` | Deployment, 1 replica, `Recreate` | Two would poll every source twice |
+| `ingestion-app` | Deployment, 1 replica, `Recreate` | Two would poll every source twice. `ingestionApp.enabled=false` leaves it out, as CI does |
 | `timescale-sink` | Deployment | Replicas share the topics' partitions through the consumer group |
 | `forecasting-api` | Deployment + Service :8000 | |
 | `scheduler-api` | Deployment + Service :8080 | |

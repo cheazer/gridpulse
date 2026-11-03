@@ -6,7 +6,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 > **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
 > and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
 > champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm charts with the whole system on kind, done). This README grows into the full write-up in Phase 5.
+> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm charts with the whole system on kind, tested end to end in CI, done). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -222,7 +222,9 @@ script brings up the whole system on a local [kind](https://kind.sigs.k8s.io/) c
 bash deploy/kind/up.sh
 ```
 
-The [charts' README](deploy/helm/README.md) explains the design.
+CI runs the same script on every change (the `kind` workflow), then the same end-to-end test as on Compose. So the
+system is proven on both platforms, from the same images. The [charts' README](deploy/helm/README.md) explains the
+design.
 
 ## Observability
 
