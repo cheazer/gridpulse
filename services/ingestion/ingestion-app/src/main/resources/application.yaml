@@ -2,8 +2,8 @@ spring:
   application:
     name: ingestion-app
   main:
-    # Virtual threads are daemon threads, and this app has no web server or consumer to hold the
-    # JVM open: without keep-alive it exits as soon as start-up finishes.
+    # Virtual threads are daemon threads. The probe server holds the JVM open today, but the pollers
+    # shouldn't depend on it: without keep-alive the app would exit as soon as start-up finished.
     keep-alive: true
   threads:
     virtual:
@@ -20,6 +20,10 @@ spring:
         linger.ms: 20 # batch the ~1,700 events of one poll into few requests
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true # /actuator/health/liveness and /readiness, off Kubernetes too (Compose, tests)
   metrics:
     distribution:
       # Buckets for calls to the sources, so dashboards and alerts can use percentiles, not just the mean.

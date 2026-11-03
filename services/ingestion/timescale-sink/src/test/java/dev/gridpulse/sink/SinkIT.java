@@ -16,7 +16,11 @@ import dev.gridpulse.events.payload.SystemPrice;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,6 +39,7 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -49,6 +54,7 @@ import org.testcontainers.utility.DockerImageName;
  * applied by Flyway exactly as the migrate job does.
  */
 @SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, // the probes, over real HTTP
     properties = {
       "spring.flyway.locations=filesystem:${gridpulse.migrations}",
       "spring.flyway.schemas=grid",
@@ -83,6 +89,19 @@ class SinkIT {
   @Autowired KafkaTemplate<String, byte[]> kafka;
   @Autowired JdbcTemplate jdbc;
   @Autowired MeterRegistry meters;
+  @LocalServerPort int port;
+
+  @Test
+  void livenessAndReadinessProbesAreUp() throws Exception {
+    try (var http = HttpClient.newHttpClient()) {
+      for (String probe : List.of("liveness", "readiness")) {
+        var uri = URI.create("http://localhost:" + port + "/actuator/health/" + probe);
+        var response = http.send(HttpRequest.newBuilder(uri).build(), BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(probe).isEqualTo(200);
+        assertThat(response.body()).as(probe).contains("\"status\":\"UP\"");
+      }
+    }
+  }
 
   @Test
   void writesEveryGoldenEventAndReDeliveryChangesNothing() throws Exception {

@@ -11,6 +11,10 @@ import dev.gridpulse.events.GridEvent;
 import dev.gridpulse.ingestion.publish.EventPublisher;
 import dev.gridpulse.ingestion.publish.EventPublisher.PublishResult;
 import dev.gridpulse.ingestion.testing.FixtureServer;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse.BodyHandlers;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneOffset;
@@ -28,6 +32,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -42,7 +47,7 @@ import org.testcontainers.redpanda.RedpandaContainer;
  * The whole ingestion app against a real Redpanda broker and the recorded API responses: one poll
  * must put every event, schema-valid and keyed by region, on the carbon intensity topic.
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT) // probes over real HTTP
 @ActiveProfiles("it") // no start-up or scheduled polls; tests call poll() themselves
 @Testcontainers
 class CarbonIntensityPollerIT {
@@ -82,6 +87,20 @@ class CarbonIntensityPollerIT {
     // Regression: virtual threads are daemon threads, so without keep-alive the app exited after
     // start-up and the container restart policy turned that into a poll every few seconds.
     assertThat(keepAlive).isTrue();
+  }
+
+  @LocalServerPort int port;
+
+  @Test
+  void livenessAndReadinessProbesAreUp() throws Exception {
+    try (var http = HttpClient.newHttpClient()) {
+      for (String probe : List.of("liveness", "readiness")) {
+        var uri = URI.create("http://localhost:" + port + "/actuator/health/" + probe);
+        var response = http.send(HttpRequest.newBuilder(uri).build(), BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(probe).isEqualTo(200);
+        assertThat(response.body()).as(probe).contains("\"status\":\"UP\"");
+      }
+    }
   }
 
   @Test

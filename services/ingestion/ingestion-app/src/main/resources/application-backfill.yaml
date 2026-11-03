@@ -5,6 +5,7 @@
 spring:
   main:
     keep-alive: false # exit when the backfill finishes
+    web-application-type: none # no probe server either: it would hold the JVM open
 
 gridpulse:
   sources:

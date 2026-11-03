@@ -83,34 +83,31 @@ services:
       timeout: 5s
       retries: 20
 
-  # Applies db/migrations (ADR-0005). A one-shot job, so no service owns the schema;
-  # in Kubernetes the same image runs as a Job before the sink starts.
+  # Applies db/migrations (ADR-0005). A one-shot job, so no service owns the schema. The image (db/Dockerfile) has the
+  # migrations baked in; in Kubernetes the same image runs as a Helm hook Job before the apps start.
   migrate:
-    image: flyway/flyway:13.10.0-alpine
+    build: &db-image
+      context: ../..
+      dockerfile: db/Dockerfile
+    image: gridpulse-db
     depends_on:
       timescaledb:
         condition: service_healthy
-    command: ["migrate"]
     environment:
       FLYWAY_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-gridpulse}
       FLYWAY_USER: ${POSTGRES_USER:-gridpulse}
       FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env and set POSTGRES_PASSWORD}
-      FLYWAY_SCHEMAS: grid
-      FLYWAY_DEFAULT_SCHEMA: grid
-      FLYWAY_LOCATIONS: filesystem:/flyway/sql
-      FLYWAY_CONNECT_RETRIES: "10"
-    volumes:
-      - ../../db/migrations:/flyway/sql:ro
     restart: "no"
 
   # Login users for services that shouldn't use the admin account. Runs after every migrate,
   # so a password changed in .env takes effect on the next `docker compose up`.
   db-users:
-    image: timescale/timescaledb:2.30.2-pg17
+    build: *db-image
+    image: gridpulse-db
     depends_on:
       migrate:
         condition: service_completed_successfully
-    entrypoint: ["/bin/bash", "/scripts/create-db-users.sh"]
+    entrypoint: ["create-db-users.sh"]
     environment:
       PGHOST: timescaledb
       PGDATABASE: ${POSTGRES_DB:-gridpulse}
@@ -120,8 +117,6 @@ services:
       FORECAST_JOB_DB_PASSWORD: ${FORECAST_JOB_DB_PASSWORD:?add FORECAST_JOB_DB_PASSWORD to .env (see .env.example)}
       MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:?add MLFLOW_DB_PASSWORD to .env (see .env.example)}
       SCHEDULER_DB_PASSWORD: ${SCHEDULER_DB_PASSWORD:?add SCHEDULER_DB_PASSWORD to .env (see .env.example)}
-    volumes:
-      - ./scripts:/scripts:ro
     restart: "no"
 
 volumes:

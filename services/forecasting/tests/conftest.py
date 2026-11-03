@@ -46,7 +46,7 @@ def admin_conninfo() -> Iterator[str]:
             for path in sorted(MIGRATIONS.glob("V*__*.sql"), key=migration_version):
                 with conn.transaction():
                     conn.execute(cast(LiteralString, path.read_text()))
-            # What deploy/compose/scripts/create-db-users.sh does for the real stack.
+            # What db/create-db-users.sh does for the real stack.
             conn.execute(f"CREATE ROLE forecasting LOGIN PASSWORD '{READER_PASSWORD}' IN ROLE grid_reader")
             conn.execute(
                 f"CREATE ROLE forecast_job LOGIN PASSWORD '{JOB_PASSWORD}' IN ROLE grid_reader, forecast_writer"
