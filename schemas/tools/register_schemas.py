@@ -21,6 +21,7 @@ import copy
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -99,7 +100,21 @@ def call(method: str, path: str, body: dict | None = None) -> dict:
         raise RuntimeError(f"{method} {path} -> {error.code}: {error.read().decode()}") from error
 
 
+def wait_for_registry(attempts: int = 24, delay: float = 5) -> None:
+    """Wait up to two minutes for the registry: a broker that reports healthy can still be starting its registry."""
+    for attempt in range(1, attempts + 1):
+        try:
+            call("GET", "/subjects")
+            return
+        except (OSError, RuntimeError) as error:  # URLError and timeouts are OSErrors
+            if attempt == attempts:
+                raise
+            print(f"schema registry not ready ({error}); retrying in {delay:.0f}s", flush=True)
+            time.sleep(delay)
+
+
 def main() -> int:
+    wait_for_registry()
     schemas = load_schemas()
     for name in sorted(n for n in schemas if n not in SHARED_ONLY):
         subject = subject_for(name)
