@@ -4,6 +4,7 @@ Plants a carbon-intensity profile with a known cleanest window and follows it th
 
     NESO events -> Kafka -> timescale-sink -> TimescaleDB -> scheduling API -> dashboard
     GridPulse forecasts (as the forecast job's login) -> TimescaleDB -> forecasting API -> scheduling API
+    every service -> OpenTelemetry collector -> Prometheus (metrics) and Tempo (traces)
 
 The live pollers and the training job are left out: they depend on public APIs and a trained model, which would make
 the test flaky and slow without testing any more of the wiring. Everything else is the real images, built from this
@@ -24,6 +25,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -32,6 +34,8 @@ from zoneinfo import ZoneInfo
 SCHEDULER = "http://localhost:8100"
 FORECASTING = "http://localhost:8000"
 DASHBOARD = "http://localhost:8200"
+PROMETHEUS = "http://localhost:9090"
+TEMPO = "http://localhost:3200"
 TOPIC = "gridpulse.carbon-intensity.v1"
 # The ingestion service's namespace for event IDs (EventIds.java): the sink accepts only UUIDv5s.
 EVENT_NAMESPACE = uuid.UUID("4402d35f-92c6-4368-bf94-8f364945a3e4")
@@ -85,6 +89,23 @@ def main() -> None:
     dip_uk = (START + NESO_DIP[0] * HALF_HOUR).astimezone(UK).strftime("%a %H:%M")
     check(f"{dip_uk} (UK time)" in home, f"at {dip_uk} UK time")
     check("Must finish by (UK time)" in get_text(f"{DASHBOARD}/schedule"), "the schedule page renders")
+
+    step("telemetry reaches Prometheus and Tempo through the collector")
+    # Services export metrics once a minute, so allow a few rounds.
+    scheduled = wait_for(
+        lambda: prometheus_value('sum(gridpulse_scheduler_schedules_total{outcome="scheduled"})', at_least=2),
+        "the scheduler's metrics in Prometheus",
+    )
+    check(scheduled >= 2, f"both scheduled jobs are counted: {scheduled}")
+    written = wait_for(
+        lambda: prometheus_value('sum(gridpulse_sink_events_total{outcome="written"})', at_least=HALF_HOURS + 8),
+        "the sink's metrics in Prometheus",
+    )
+    check(written >= HALF_HOURS + 8, f"every planted NESO event is counted as written: {written}")
+    # One trace across two services: the scheduler's request, then its call to the forecasting API.
+    across = '{ resource.service.name = "scheduler-api" } >> { resource.service.name = "forecasting-api" }'
+    traces = wait_for(lambda: tempo_search(across), "a scheduler trace that continues into the forecasting API")
+    check(len(traces) >= 1, f"a trace spans the scheduler and the forecasting API: {traces[0]['traceID']}")
 
     print("\nEnd to end: all checks passed.")
 
@@ -185,6 +206,20 @@ def schedule(source: str) -> dict:
     except urllib.error.HTTPError as e:
         fail(f"POST /v1/schedule ({source}) gave {e.code}: {e.read().decode()}")
         raise
+
+
+def prometheus_value(query: str, at_least: float) -> float | None:
+    """The single value of an instant query, once it reaches ``at_least``; None before then."""
+    result = get_json(f"{PROMETHEUS}/api/v1/query?{urllib.parse.urlencode({'query': query})}")["data"]["result"]
+    value = float(result[0]["value"][1]) if result else 0.0
+    return value if value >= at_least else None
+
+
+def tempo_search(traceql: str) -> list[dict] | None:
+    """Traces matching a TraceQL query in the last hour; None if there are none yet."""
+    query = urllib.parse.urlencode({"q": traceql, "start": int(time.time()) - 3600, "end": int(time.time()) + 60})
+    traces = get_json(f"{TEMPO}/api/search?{query}").get("traces") or []
+    return traces or None
 
 
 def wait_for(probe, what: str, seconds: int = 180):

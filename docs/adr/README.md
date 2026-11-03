@@ -20,3 +20,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0011](0011-forecasting-design.md) | Forecasting design: as-of features, one LightGBM model across horizons, forecasts served from a table | Accepted |
 | [0012](0012-model-promotion.md) | Model promotion: champion and challenger compared on data neither has seen | Accepted |
 | [0013](0013-scheduler-design.md) | Scheduler design: .NET Minimal APIs, forecasts over HTTP, a separate Blazor dashboard | Accepted |
+| [0014](0014-observability.md) | Observability: OpenTelemetry everywhere, one collector, Prometheus, Tempo and Grafana | Accepted |

@@ -40,6 +40,9 @@ public class OtlpEnvironmentPostProcessor implements EnvironmentPostProcessor {
     // Every trace, not Spring Boot's default 10%: these services handle a few requests a minute,
     // so sampling would only lose the rare trace worth looking at.
     properties.put("management.tracing.sampling.probability", 1.0);
+    // Durations in seconds, OpenTelemetry's convention and what the .NET and Python services send,
+    // not Micrometer's default of milliseconds: one unit for every duration in Prometheus.
+    properties.put("management.otlp.metrics.export.base-time-unit", "seconds");
     if (endpoint == null || endpoint.isBlank()) {
       properties.put("management.otlp.metrics.export.enabled", false);
       properties.put("management.tracing.export.otlp.enabled", false);

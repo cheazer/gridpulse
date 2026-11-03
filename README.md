@@ -6,7 +6,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 > **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
 > and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
 > champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> Next: Phase 4, Kubernetes and observability. This README grows into the full write-up in Phase 5.
+> In progress: Phase 4, Kubernetes and observability (telemetry in every service, and the observability stack, done). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -23,7 +23,7 @@ schemas/events/v1/   Shared, versioned event contracts (JSON Schema) + golden ex
 services/            One folder per service
 db/migrations/       TimescaleDB schema (Flyway)
 deploy/              Docker Compose (local) and Helm (k8s)
-observability/       OpenTelemetry collector, Prometheus, Grafana
+observability/       OpenTelemetry collector, Prometheus, Tempo and Grafana configuration, dashboards
 loadtest/k6/         Load tests for the scheduling API
 docs/adr/            Architecture decision records
 docs/results/        Data-quality, forecast-accuracy and experiment reports (generated, committed)
@@ -39,7 +39,7 @@ Java 21, .NET 10, Python 3.12, uv and Docker, and creates `.env` for you. Run `d
 Locally, you need Docker Desktop (or Docker Engine with Compose v2.20+).
 
 ```bash
-cp .env.example .env    # then set the four *_PASSWORD values
+cp .env.example .env    # then set the *_PASSWORD values
 docker compose up -d
 ```
 
@@ -53,6 +53,8 @@ docker compose up -d
 | Forecasting API (OpenAPI docs) | http://localhost:8000/docs |
 | Scheduling API (OpenAPI docs) | http://localhost:8100/scalar |
 | Dashboard | http://localhost:8200 |
+| Grafana (metrics, traces; dashboards in the GridPulse folder) | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
 
 On start-up four one-shot jobs run: `redpanda-init` creates the topics and their dead-letter topics,
 `schema-init` registers the event schemas with `BACKWARD` compatibility, `migrate` applies the
@@ -200,6 +202,38 @@ much CO2 that saves against starting now, with a likely range. A Blazor dashboar
 
 Details: [services/scheduler](services/scheduler/README.md), [ADR-0013](docs/adr/0013-scheduler-design.md).
 
+## Observability
+
+Every service sends traces and metrics with [OpenTelemetry](https://opentelemetry.io/) to one collector, which
+passes traces to Tempo and holds metrics for Prometheus. Grafana shows both
+([ADR-0014](docs/adr/0014-observability.md)).
+
+```text
+ingestion-app, timescale-sink ─┐
+forecasting-api, forecast-job ─┼─ OTLP/HTTP ─▶ otel-collector ─┬─▶ Tempo (traces)      ─┐
+scheduler-api, dashboard ──────┘                              └─▶ Prometheus (metrics) ─┴─▶ Grafana
+```
+
+- **One variable.** Each service reads `OTEL_EXPORTER_OTLP_ENDPOINT`, which Compose sets to the collector. Unset, a
+  service exports nothing, so tests and local runs need no collector. Each service's README explains what it
+  reports.
+- **One trace across services.** A schedule request is a single trace: the dashboard, the scheduling API, its call
+  to the forecasting API, and that service's database query.
+- **Alerts go on symptoms** (step 4.6). The two metrics that matter:
+  - `gridpulse_forecast_age_seconds`, how old the newest forecast is;
+  - `gridpulse_sink_write_age_seconds`, how long since each kind of data was last stored.
+
+  Whatever breaks upstream, one of them grows.
+- **Configuration as code.** The collector, Prometheus, Tempo and Grafana are configured from
+  [observability/](observability). Grafana's data sources and the **GridPulse overview** dashboard are provisioned
+  from files there, and can't be edited in the UI.
+- **What the dashboard shows:** data freshness, request rates, latency and errors per service, the ingestion
+  pipeline (events published, dead-lettered and written, source API latency) and scheduling (outcomes, CO₂ saved),
+  with links into the traces.
+
+![GridPulse overview dashboard in Grafana: forecast age, time since data was last written, consumer lag, request
+rates and latency, the ingestion pipeline and scheduling, with recent traces](docs/images/grafana-overview.png)
+
 ## Data sources
 
 | Source | Used for | Licence |
@@ -223,3 +257,5 @@ Thirteen architecture decision records, indexed in [docs/adr](docs/adr/README.md
   neither has seen.
 - [0013](docs/adr/0013-scheduler-design.md): a pure scheduling core behind interfaces, the dashboard as an ordinary
   API client, and NESO's regional forecasts read from the database as a second source that works without ours.
+- [0014](docs/adr/0014-observability.md): OpenTelemetry in every service, one collector, Prometheus and Tempo
+  behind Grafana, and alerts on symptoms (stale forecasts, data that stopped arriving).

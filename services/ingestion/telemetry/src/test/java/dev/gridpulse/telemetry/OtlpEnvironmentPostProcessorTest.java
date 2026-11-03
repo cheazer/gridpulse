@@ -23,6 +23,8 @@ class OtlpEnvironmentPostProcessorTest {
         .isEqualTo("http://otel:4318/v1/metrics");
     assertThat(environment.getProperty("management.otlp.metrics.export.enabled")).isNull();
     assertThat(environment.getProperty("management.tracing.sampling.probability")).isEqualTo("1.0");
+    assertThat(environment.getProperty("management.otlp.metrics.export.base-time-unit"))
+        .isEqualTo("seconds");
   }
 
   @Test

@@ -19,6 +19,13 @@ spring:
         enable.idempotence: true # no duplicates from producer retries
         linger.ms: 20 # batch the ~1,700 events of one poll into few requests
 
+management:
+  metrics:
+    distribution:
+      # Buckets for calls to the sources, so dashboards and alerts can use percentiles, not just the mean.
+      percentiles-histogram:
+        http.client.requests: true
+
 gridpulse:
   sources:
     carbon-intensity: # ADR-0006

@@ -1,0 +1,10 @@
+# Dashboards as code: every JSON file in observability/grafana/dashboards is loaded at start-up and kept in sync.
+apiVersion: 1
+
+providers:
+  - name: gridpulse
+    folder: GridPulse
+    type: file
+    allowUiUpdates: false # edit the JSON in the repo, not the UI, so the dashboard is reviewed like code
+    options:
+      path: /etc/grafana/dashboards
