@@ -6,6 +6,7 @@ description = "Consumes GridPulse events from Kafka and upserts them into Timesc
 
 dependencies {
     implementation(project(":events-common"))
+    implementation(project(":telemetry"))
     implementation("org.springframework.boot:spring-boot-starter-kafka")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     runtimeOnly("org.postgresql:postgresql")

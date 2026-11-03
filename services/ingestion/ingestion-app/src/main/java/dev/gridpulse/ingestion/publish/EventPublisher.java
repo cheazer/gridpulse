@@ -4,8 +4,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import dev.gridpulse.events.EventCodec;
 import dev.gridpulse.events.EventRules;
+import dev.gridpulse.events.EventType;
 import dev.gridpulse.events.EventValidator;
 import dev.gridpulse.events.GridEvent;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -19,6 +21,10 @@ import org.springframework.stereotype.Component;
  * Validates events and publishes them to their topic, keyed by region (ADR-0004, ADR-0006). Events
  * that fail validation go to the topic's dead-letter topic instead, with the reasons in a header,
  * so nothing invalid ever reaches a consumer.
+ *
+ * <p>Counts what Kafka acknowledged in {@code gridpulse.ingestion.events}, by {@code event_type}
+ * and {@code outcome} ({@code published} or {@code dead-lettered}). A rising dead-letter count
+ * means a source has changed shape.
  */
 @Component
 public class EventPublisher {
@@ -32,12 +38,17 @@ public class EventPublisher {
   private final KafkaTemplate<String, byte[]> kafka;
   private final EventCodec codec;
   private final EventValidator validator;
+  private final MeterRegistry meters;
 
   public EventPublisher(
-      KafkaTemplate<String, byte[]> kafka, EventCodec codec, EventValidator validator) {
+      KafkaTemplate<String, byte[]> kafka,
+      EventCodec codec,
+      EventValidator validator,
+      MeterRegistry meters) {
     this.kafka = kafka;
     this.codec = codec;
     this.validator = validator;
+    this.meters = meters;
   }
 
   public record PublishResult(int published, int deadLettered) {}
@@ -50,14 +61,16 @@ public class EventPublisher {
    */
   public PublishResult publishAll(List<GridEvent> events) {
     List<CompletableFuture<?>> sends = new ArrayList<>(events.size());
-    int deadLettered = 0;
+    List<EventType> published = new ArrayList<>(events.size());
+    List<EventType> rejected = new ArrayList<>();
     for (GridEvent event : events) {
       byte[] json = codec.encode(event);
       List<String> problems = problems(event, json);
       if (problems.isEmpty()) {
         sends.add(kafka.send(record(event.eventType().topic(), event, json)));
+        published.add(event.eventType());
       } else {
-        deadLettered++;
+        rejected.add(event.eventType());
         log.warn(
             "Dead-lettering {} event {}: {}",
             event.eventType().wireName(),
@@ -70,7 +83,17 @@ public class EventPublisher {
       }
     }
     CompletableFuture.allOf(sends.toArray(CompletableFuture<?>[]::new)).join();
-    return new PublishResult(events.size() - deadLettered, deadLettered);
+    // Counted only once Kafka has acknowledged everything: a failed send counts nothing, and the
+    // next poll re-sends it.
+    published.forEach(type -> count(type, "published"));
+    rejected.forEach(type -> count(type, "dead-lettered"));
+    return new PublishResult(published.size(), rejected.size());
+  }
+
+  private void count(EventType type, String outcome) {
+    meters
+        .counter("gridpulse.ingestion.events", "event_type", type.wireName(), "outcome", outcome)
+        .increment();
   }
 
   private List<String> problems(GridEvent event, byte[] json) {

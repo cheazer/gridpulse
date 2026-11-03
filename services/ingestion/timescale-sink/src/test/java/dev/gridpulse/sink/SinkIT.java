@@ -13,6 +13,7 @@ import dev.gridpulse.events.Source;
 import dev.gridpulse.events.payload.Demand;
 import dev.gridpulse.events.payload.Demand.DemandType;
 import dev.gridpulse.events.payload.SystemPrice;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URISyntaxException;
@@ -81,6 +82,7 @@ class SinkIT {
 
   @Autowired KafkaTemplate<String, byte[]> kafka;
   @Autowired JdbcTemplate jdbc;
+  @Autowired MeterRegistry meters;
 
   @Test
   void writesEveryGoldenEventAndReDeliveryChangesNothing() throws Exception {
@@ -130,6 +132,11 @@ class SinkIT {
                     .value(),
                 UTF_8))
         .contains(UndecodableEventException.class.getName());
+
+    // Wired into the running app: the bad record and the batches show up in the metrics.
+    assertThat(meters.get("gridpulse.sink.events").tag("outcome", "undecodable").counter().count())
+        .isGreaterThanOrEqualTo(1);
+    assertThat(meters.get("gridpulse.sink.batch").timer().count()).isPositive();
   }
 
   private void assertGoldenRows(List<UUID> ids) {
