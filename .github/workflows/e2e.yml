@@ -11,6 +11,7 @@ on:
       - "db/**"
       - "schemas/**"
       - "deploy/compose/**"
+      - "deploy/kafka-init/**"
       - "compose.yaml"
       - "tests/e2e/**"
       - "observability/**"

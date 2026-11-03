@@ -28,29 +28,30 @@ services:
       timeout: 5s
       retries: 20
 
+  # Creates the topics, then (schema-init) registers the event schemas. Both run the kafka-init image
+  # (deploy/kafka-init), the same one the Kubernetes init Job runs.
   redpanda-init:
-    image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+    build: &kafka-init-image
+      context: ../..
+      dockerfile: deploy/kafka-init/Dockerfile
+    image: gridpulse-kafka-init
     depends_on:
       redpanda:
         condition: service_healthy
-    entrypoint: ["/bin/bash", "/scripts/create-topics.sh"]
     environment:
       RPK_BROKERS: redpanda:9092
       RPK_ADMIN_HOSTS: redpanda:9644   # cluster config goes through the admin API, not the Kafka port
-    volumes:
-      - ./scripts:/scripts:ro
     restart: "no"
 
   schema-init:
-    image: python:3.12-slim
+    build: *kafka-init-image
+    image: gridpulse-kafka-init
     depends_on:
       redpanda:
         condition: service_healthy
-    command: ["python", "-I", "/repo/schemas/tools/register_schemas.py"]
+    command: ["python", "-I", "/opt/gridpulse/schemas/tools/register_schemas.py"]
     environment:
       SCHEMA_REGISTRY_URL: http://redpanda:8081
-    volumes:
-      - ../../schemas:/repo/schemas:ro
     restart: "no"
 
   console:
