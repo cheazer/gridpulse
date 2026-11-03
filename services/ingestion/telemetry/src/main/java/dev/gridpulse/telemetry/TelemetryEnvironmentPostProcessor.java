@@ -19,10 +19,12 @@ import org.springframework.core.env.MapPropertySource;
  *       isn't there.
  * </ul>
  *
+ * <p>Either way, logs are ECS JSON lines carrying the current trace and span IDs.
+ *
  * <p>These are defaults: the property source is added last, so anything set in application.yaml or
  * Spring's own environment variables still wins.
  */
-public class OtlpEnvironmentPostProcessor implements EnvironmentPostProcessor {
+public class TelemetryEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
   static final String ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT";
 
@@ -43,6 +45,14 @@ public class OtlpEnvironmentPostProcessor implements EnvironmentPostProcessor {
     // Durations in seconds, OpenTelemetry's convention and what the .NET and Python services send,
     // not Micrometer's default of milliseconds: one unit for every duration in Prometheus.
     properties.put("management.otlp.metrics.export.base-time-unit", "seconds");
+    // Logs as one JSON object per line in the Elastic Common Schema, the shape the .NET and Python
+    // services write too. Micrometer puts the current trace and span IDs in the MDC as traceId and
+    // spanId, which Spring copies into each line; renaming them to ECS's trace.id and span.id
+    // (dotted keys, which ECS allows alongside nested objects) is what lets a log line be looked up
+    // as a trace in Tempo. Brackets keep the keys' case through Spring's property binding.
+    properties.put("logging.structured.format.console", "ecs");
+    properties.put("logging.structured.json.rename[traceId]", "trace.id");
+    properties.put("logging.structured.json.rename[spanId]", "span.id");
     if (endpoint == null || endpoint.isBlank()) {
       properties.put("management.otlp.metrics.export.enabled", false);
       properties.put("management.tracing.export.otlp.enabled", false);

@@ -242,4 +242,5 @@ def _observe_forecast_age(app: FastAPI, meter_provider: MeterProvider | None) ->
 
 
 telemetry.configure("forecasting-api")
+telemetry.configure_logging("forecasting-api")
 app = create_app()

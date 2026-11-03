@@ -14,4 +14,5 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-opentelemetry")
 
     testImplementation("org.springframework:spring-test")
+    testImplementation("org.springframework.boot:spring-boot-test")
 }

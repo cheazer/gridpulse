@@ -65,6 +65,16 @@ registry is set to seconds.
 These catch a crashed job, a stopped poller, an unreachable broker and a stuck sink alike. Metrics sent from inside a
 job couldn't show a job that never ran.
 
+**Logs carry the trace (step 4.2b).** Every service writes one JSON object per line to stdout, in the
+[Elastic Common Schema](https://www.elastic.co/guide/en/ecs/current/index.html): `@timestamp`, `log.level`,
+`log.logger`, `service.name`, `message`, `error.*`, and `trace.id` and `span.id` when the line was logged inside a span.
+- **Why JSON, not text:** any log shipper (Loki, Elastic, a cloud provider's) parses it with no per-service regex, and
+  the trace ID is a field to search on. The cost is that raw `docker compose logs` is harder to read; `jq` fixes that.
+- **Why ECS:** Spring Boot writes it natively. The .NET and Python services each have a small formatter writing the
+  same fields, so a line looks the same whatever language wrote it.
+- Logs aren't exported over OTLP yet: with no log store (Loki) running there's nowhere to send them, and stdout is
+  what `kubectl logs` and any node-level shipper read.
+
 **Small, labelled cardinality.** Metric tags are kept to a handful of values (source, outcome, event type, task),
 because every combination is a separate time series.
 

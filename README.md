@@ -219,6 +219,13 @@ scheduler-api, dashboard ──────┘                              └�
   reports.
 - **One trace across services.** A schedule request is a single trace: the dashboard, the scheduling API, its call
   to the forecasting API, and that service's database query.
+- **Logs carry the trace.** Every service writes one JSON object per line to stdout, with the same
+  [ECS](https://www.elastic.co/guide/en/ecs/current/index.html) fields whatever its language. A line logged during a
+  request or job run has `trace.id` and `span.id`, so it can be looked up in Tempo. To read them in a terminal:
+
+  ```bash
+  docker compose logs --no-log-prefix scheduler-api | jq -r '"\(."@timestamp") \(.log.level) \(.message) \(."trace.id" // "")"'
+  ```
 - **Alerts go on symptoms** (step 4.6). The two metrics that matter:
   - `gridpulse_forecast_age_seconds`, how old the newest forecast is;
   - `gridpulse_sink_write_age_seconds`, how long since each kind of data was last stored.

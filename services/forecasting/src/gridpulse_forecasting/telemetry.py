@@ -1,4 +1,4 @@
-"""OpenTelemetry for the forecasting service (step 4.1): traces and metrics over OTLP/HTTP.
+"""OpenTelemetry for the forecasting service (step 4.1): traces and metrics over OTLP/HTTP, and logs that carry them.
 
 Configured by the standard environment variables, like every other GridPulse service: OTEL_EXPORTER_OTLP_ENDPOINT
 names the collector, and OTEL_RESOURCE_ATTRIBUTES, OTEL_METRIC_EXPORT_INTERVAL and the rest work as documented.
@@ -8,7 +8,11 @@ instruments created through the global API then do nothing.
 
 from __future__ import annotations
 
+import datetime as dt
+import json
+import logging
 import os
+import sys
 
 from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
@@ -47,6 +51,61 @@ def configure(service_name: str) -> bool:
     )
     PsycopgInstrumentor().instrument(enable_commenter=False)
     return True
+
+
+# Python's level names as Logback (and so the Java and .NET services) writes them.
+_LEVELS = {"WARNING": "WARN", "CRITICAL": "FATAL"}
+
+# Loggers uvicorn sets up with handlers of its own; pointed at the root logger, they're written as JSON too.
+_UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+
+
+class EcsFormatter(logging.Formatter):
+    """One line of Elastic Common Schema JSON per record, the shape the Java and .NET services write too.
+
+    ``trace.id`` and ``span.id`` are the span the record was logged in, left out when there isn't one. Handlers format
+    on the thread that logged, so the current span is still the caller's.
+    """
+
+    def __init__(self, service_name: str) -> None:
+        super().__init__()
+        self.service_name = service_name
+
+    def format(self, record: logging.LogRecord) -> str:
+        line: dict[str, object] = {
+            "@timestamp": dt.datetime.fromtimestamp(record.created, dt.UTC).isoformat().replace("+00:00", "Z"),
+            "log": {"level": _LEVELS.get(record.levelname, record.levelname), "logger": record.name},
+            "service": {"name": self.service_name},
+            "message": record.getMessage(),
+        }
+        span = trace.get_current_span().get_span_context()
+        if span.is_valid:
+            line["trace.id"] = trace.format_trace_id(span.trace_id)
+            line["span.id"] = trace.format_span_id(span.span_id)
+        if record.exc_info and record.exc_info[1] is not None:
+            error = record.exc_info[1]
+            line["error"] = {
+                "type": f"{type(error).__module__}.{type(error).__qualname__}",
+                "message": str(error),
+                "stack_trace": self.formatException(record.exc_info),
+            }
+        line["ecs"] = {"version": "8.11"}
+        # ensure_ascii off: "£" and "₂" stay readable. json.dumps escapes newlines, so a record is always one line.
+        # Compact separators, as the Java and .NET services write.
+        return json.dumps(line, ensure_ascii=False, separators=(",", ":"))
+
+
+def configure_logging(service_name: str, level: int = logging.INFO) -> None:
+    """Log every record, uvicorn's included, to stdout as ECS JSON lines. Safe to call more than once."""
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(EcsFormatter(service_name))
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(level)
+    for name in _UVICORN_LOGGERS:
+        logger = logging.getLogger(name)
+        logger.handlers = []
+        logger.propagate = True
 
 
 def flush() -> None:
