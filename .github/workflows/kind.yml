@@ -1,0 +1,83 @@
+name: kind
+
+# The whole system on Kubernetes: deploy/kind/up.sh builds this commit's images, creates a kind cluster and installs
+# both Helm charts, under the "restricted" Pod Security Standard. Then the same end-to-end test as the Compose job
+# (tests/e2e/end_to_end.py) runs against it, through kubectl.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "services/**"
+      - "!services/**/*.md"
+      - "db/**"
+      - "schemas/**"
+      - "deploy/**"
+      - "!deploy/**/*.md"
+      - "compose.yaml"
+      - "observability/**"
+      - "tests/e2e/**"
+      - ".github/workflows/kind.yml"
+  pull_request:
+    paths: *paths
+
+permissions:
+  contents: read
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      # Eight images, their build cache and the kind node's copies of them need more than a runner's free disk.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Create .env with throwaway passwords
+        run: |
+          sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_DB_PASSWORD=.*/FORECAST_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^FORECAST_JOB_DB_PASSWORD=.*/FORECAST_JOB_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^SCHEDULER_DB_PASSWORD=.*/SCHEDULER_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^MLFLOW_DB_PASSWORD=.*/MLFLOW_DB_PASSWORD=$(openssl rand -hex 16)/" \
+              -e "s/^GRAFANA_ADMIN_PASSWORD=.*/GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 16)/" .env.example > .env
+      - uses: helm/kind-action@v1
+        with:
+          version: v0.31.0
+          install_only: true # up.sh creates the cluster
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.2
+      # The live pollers are off, as in the Compose job: the test plants its own data, which real forecasts would
+      # overwrite.
+      - name: Bring up GridPulse on kind
+        env:
+          GRIDPULSE_SET: ingestionApp.enabled=false
+        run: bash deploy/kind/up.sh
+      # The test talks to the same localhost ports as on Compose. Background processes outlive their step.
+      - name: Forward the services' ports
+        run: |
+          forward() { nohup kubectl -n gridpulse port-forward "$1" "$2" >"/tmp/port-forward-${2%%:*}.log" 2>&1 & }
+          forward svc/gridpulse-scheduler-api 8100:8080
+          forward svc/gridpulse-forecasting-api 8000:8000
+          forward svc/gridpulse-scheduler-dashboard 8200:8080
+          forward svc/prometheus 9090:9090
+          forward svc/tempo 3200:3200
+          for port in 8100 8000 8200 9090 3200; do
+            timeout 60 bash -c "until (: </dev/tcp/127.0.0.1/$port) 2>/dev/null; do sleep 1; done"
+          done
+      - name: End-to-end test
+        env:
+          E2E_PLATFORM: kubernetes
+        run: python3 tests/e2e/end_to_end.py
+      - name: Cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n gridpulse get pods,jobs,pvc -o wide || true
+          kubectl -n gridpulse get events --sort-by=.lastTimestamp | tail -40 || true
+          for pod in $(kubectl -n gridpulse get pods -o name); do
+            echo "=== $pod"
+            kubectl -n gridpulse logs "$pod" --all-containers --tail=40 || true
+          done
+          cat /tmp/port-forward-*.log || true

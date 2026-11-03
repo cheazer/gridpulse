@@ -8,11 +8,15 @@ Plants a carbon-intensity profile with a known cleanest window and follows it th
 
 The live pollers and the training job are left out: they depend on public APIs and a trained model, which would make
 the test flaky and slow without testing any more of the wiring. Everything else is the real images, built from this
-commit, talking over the Compose network.
+commit.
 
-Run from the repository root with the stack up (see .github/workflows/e2e.yml):
+Run from the repository root with the stack up, on either platform:
 
-    python3 tests/e2e/end_to_end.py
+    python3 tests/e2e/end_to_end.py                             # Compose (.github/workflows/e2e.yml)
+    E2E_PLATFORM=kubernetes python3 tests/e2e/end_to_end.py     # kind (.github/workflows/kind.yml)
+
+On Kubernetes the services' ports are forwarded to the same localhost ports, so only the two commands run inside a
+container differ: `kubectl exec` instead of `docker compose exec`.
 
 Standard library only, so it runs on any CI runner without installing anything.
 """
@@ -21,6 +25,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 import sys
 import time
@@ -37,6 +42,11 @@ DASHBOARD = "http://localhost:8200"
 PROMETHEUS = "http://localhost:9090"
 TEMPO = "http://localhost:3200"
 TOPIC = "gridpulse.carbon-intensity.v1"
+# Where the stack runs: "compose" (the default) or "kubernetes" (deploy/kind/up.sh), and its namespace there.
+PLATFORM = os.environ.get("E2E_PLATFORM", "compose")
+NAMESPACE = os.environ.get("E2E_NAMESPACE", "gridpulse")
+# The pod for each component on Kubernetes: StatefulSet pods have fixed names.
+PODS = {"redpanda": "redpanda-0", "timescaledb": "timescaledb-0"}
 # The ingestion service's namespace for event IDs (EventIds.java): the sink accepts only UUIDv5s.
 EVENT_NAMESPACE = uuid.UUID("4402d35f-92c6-4368-bf94-8f364945a3e4")
 UK = ZoneInfo("Europe/London")
@@ -124,7 +134,7 @@ def plant_neso_events() -> None:
     actuals = [event(START - i * HALF_HOUR, None, forecast=180, actual=180) for i in range(1, 9)]
     lines = "".join(json.dumps(e, separators=(",", ":")) + "\n" for e in forecasts + actuals)
     # Keyed by region, like the ingestion service, so a region's events stay in order on one partition.
-    compose("exec", "-T", "redpanda", "rpk", "topic", "produce", TOPIC, "-k", "GB", stdin=lines)
+    run_in("redpanda", "rpk", "topic", "produce", TOPIC, "-k", "GB", stdin=lines)
 
 
 def event(valid_from: dt.datetime, issued_at: dt.datetime | None, forecast: float, actual: float | None) -> dict:
@@ -175,9 +185,10 @@ def plant_gridpulse_forecasts() -> None:
     )
     password = env_file()["FORECAST_JOB_DB_PASSWORD"]
     database = env_file().get("POSTGRES_DB", "gridpulse")
-    compose(
-        "exec", "-T", "-e", f"PGPASSWORD={password}", "timescaledb",
+    run_in(
+        "timescaledb",
         "psql", "-v", "ON_ERROR_STOP=1", "-q", "-h", "localhost", "-U", "forecast_job", "-d", database, "-c", sql,
+        env={"PGPASSWORD": password},
     )
 
 
@@ -244,10 +255,20 @@ def get_text(url: str) -> str:
         return response.read().decode()
 
 
-def compose(*args: str, stdin: str | None = None) -> None:
-    result = subprocess.run(["docker", "compose", *args], input=stdin, text=True, capture_output=True, check=False)
+def run_in(component: str, *command: str, env: dict[str, str] | None = None, stdin: str | None = None) -> None:
+    """Run a command in a component's container: `docker compose exec`, or `kubectl exec` on Kubernetes."""
+    env = env or {}
+    if PLATFORM == "kubernetes":
+        # kubectl exec has no -e: set the variables with env(1) inside the container instead.
+        assignments = [f"{key}={value}" for key, value in env.items()]
+        prefix = ["env", *assignments] if assignments else []
+        args = ["kubectl", "-n", NAMESPACE, "exec", "-i", PODS[component], "--", *prefix, *command]
+    else:
+        settings = [f"--env={key}={value}" for key, value in env.items()]
+        args = ["docker", "compose", "exec", "-T", *settings, component, *command]
+    result = subprocess.run(args, input=stdin, text=True, capture_output=True, check=False)
     if result.returncode != 0:
-        fail(f"docker compose {args[0]} {args[2] if len(args) > 2 else ''} failed:\n{result.stdout}{result.stderr}")
+        fail(f"{command[0]} in {component} failed:\n{result.stdout}{result.stderr}")
 
 
 def env_file() -> dict[str, str]:

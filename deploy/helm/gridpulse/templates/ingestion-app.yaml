@@ -1,5 +1,6 @@
 {{- $ctx := dict "root" . "component" "ingestion-app" -}}
 {{- $v := .Values.ingestionApp -}}
+{{- if $v.enabled }}
 # Polls the public sources and publishes events to Kafka. Exactly one replica: two would poll everything twice.
 # Recreate, not RollingUpdate, for the same reason: the old pod stops before the new one starts.
 apiVersion: apps/v1
@@ -37,3 +38,4 @@ spec:
           {{- include "gridpulse.containerSecurity" . | nindent 10 }}
           {{- include "gridpulse.tmpVolumeMount" . | nindent 10 }}
       {{- include "gridpulse.tmpVolume" . | nindent 6 }}
+{{- end }}

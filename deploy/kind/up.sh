@@ -2,6 +2,7 @@
 # The whole of GridPulse on a local Kubernetes cluster (kind), from this checkout:
 #   bash deploy/kind/up.sh            (from the repo root; needs docker, kind, kubectl, helm and a .env)
 #   SKIP_BUILD=1 bash deploy/kind/up.sh   (use the images Compose has already built)
+#   GRIDPULSE_SET=ingestionApp.enabled=false bash deploy/kind/up.sh   (extra --set values for the gridpulse chart)
 # Builds the images, creates the cluster, loads the images into it, and installs the two charts into one namespace
 # that enforces the "restricted" Pod Security Standard:
 #   gridpulse-dev   TimescaleDB, Redpanda, MLflow, and the observability stack;
@@ -62,6 +63,7 @@ helm upgrade --install gridpulse deploy/helm/gridpulse --namespace "$NAMESPACE" 
   --set image.tag="$TAG" \
   --set telemetry.otlpEndpoint=http://otel-collector:4318 \
   --set telemetry.environment=kind \
+  ${GRIDPULSE_SET:+--set "$GRIDPULSE_SET"} \
   --wait --timeout 10m
 
 step "waiting for everything"

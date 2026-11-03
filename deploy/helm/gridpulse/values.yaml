@@ -35,6 +35,8 @@ users:
 # One block per workload. Memory has a limit (a leak gets the pod restarted, not the node starved); CPU has a request
 # only, since a CPU limit throttles a busy pod even when the node is idle.
 ingestionApp:
+  # Off where the test plants its own data (CI): the live pollers would write real forecasts over it.
+  enabled: true
   repository: gridpulse-ingestion-app
   resources:
     requests: { cpu: 100m, memory: 384Mi }
