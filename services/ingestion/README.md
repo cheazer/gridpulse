@@ -9,6 +9,7 @@ Kafka; a separate sink writes them to TimescaleDB. Built with Gradle; shared bui
 | `events-common` | library | The event model as Java records, JSON codec, JSON Schema validation, deterministic event IDs and settlement-period maths |
 | `ingestion-app` | Spring Boot app | Polls the Carbon Intensity API every half-hour and publishes validated events to Kafka |
 | `timescale-sink` | Spring Boot app | Consumes every event topic and upserts batches into TimescaleDB, dead-lettering undecodable records |
+| `telemetry` | library | OpenTelemetry for both apps: Spring Boot's OTLP export, configured from `OTEL_EXPORTER_OTLP_ENDPOINT` |
 
 ```bash
 cd services/ingestion
@@ -58,3 +59,33 @@ The model is hand-written records rather than generated from the schemas: JSON S
 `schemas/events/v1/examples` through the validator, the codec and the rules, and checks that re-encoding
 reproduces the original JSON. The same files drive the Python validator, so the two implementations can't
 drift apart unnoticed.
+
+## Telemetry
+
+Both apps send traces and metrics over OTLP/HTTP using Spring Boot's own support (`spring-boot-starter-opentelemetry`:
+Micrometer Observation bridged to OpenTelemetry tracing, and Micrometer's OTLP registry for metrics). The `telemetry`
+module points it at `OTEL_EXPORTER_OTLP_ENDPOINT`, the variable every GridPulse service reads, so the platform names
+the collector once for all languages. Unset, nothing is exported.
+
+- **Traces:**
+  - each scheduled poll is a span, with its HTTP calls to the source beneath it;
+  - each batch the sink writes is a `write batch` span, recording how many records it held;
+  - every trace is kept: Spring Boot's default is 10%, but at a few polls an hour, sampling would only lose the
+    trace worth looking at.
+- **Metrics come mostly from Spring and the clients:**
+  - HTTP client calls (`http.client.requests`, by source host and status);
+  - the JVM;
+  - the Kafka clients, including consumer lag (`kafka.consumer.fetch.manager.records.lag.max`).
+- **GridPulse's own metrics:**
+  - `gridpulse.ingestion.events`: events Kafka acknowledged, by `event_type` and `outcome` (`published`,
+    `dead-lettered`). A rising dead-letter count means a source has changed shape.
+  - `gridpulse.sink.events`: events written, or records that couldn't be decoded.
+  - `gridpulse.sink.batch`: a timer per batch.
+  - `gridpulse.sink.write.age`: time since each event type was last written. This is the ingestion symptom to
+    alert on: a source down, a poller stopped, Kafka unreachable or the sink stuck all make it grow.
+- **What's not traced, and why:**
+  - **Kafka sends are not traced one by one.** One poll publishes up to a few thousand events, and a span each would
+    swamp the traces. The sink couldn't continue them anyway: Spring Kafka's observation covers record listeners,
+    and the sink uses a batch listener for its one-transaction-per-batch writes. So a poll and the batch that stores
+    it are separate traces, joined by time and the event counts.
+  - **No spans per SQL statement.** Spring doesn't trace JDBC by itself. The batch span covers the whole transaction.

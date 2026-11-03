@@ -6,6 +6,7 @@ description = "Polls public UK grid data sources and publishes normalised events
 
 dependencies {
     implementation(project(":events-common"))
+    implementation(project(":telemetry"))
     implementation("org.springframework.boot:spring-boot-starter-restclient")
     implementation("org.springframework.boot:spring-boot-starter-kafka")
 
