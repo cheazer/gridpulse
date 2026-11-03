@@ -83,6 +83,9 @@ the collector once for all languages. Unset, nothing is exported.
   - `gridpulse.sink.batch`: a timer per batch.
   - `gridpulse.sink.write.age`: time since each event type was last written. This is the ingestion symptom to
     alert on: a source down, a poller stopped, Kafka unreachable or the sink stuck all make it grow.
+- **Logs** are ECS JSON lines, Spring Boot's own structured logging, set by the `telemetry` module. Micrometer puts
+  the current trace and span IDs in the logging context, and the module renames them to ECS's `trace.id` and
+  `span.id`, the fields the .NET and Python services write too.
 - **What's not traced, and why:**
   - **Kafka sends are not traced one by one.** One poll publishes up to a few thousand events, and a span each would
     swamp the traces. The sink couldn't continue them anyway: Spring Kafka's observation covers record listeners,

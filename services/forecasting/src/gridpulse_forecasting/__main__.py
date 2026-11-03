@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import logging
 import os
 import sys
 from pathlib import Path
@@ -32,6 +33,9 @@ from gridpulse_forecasting.report import accuracy_report
 from gridpulse_forecasting.sources import load_sources
 from gridpulse_forecasting.tasks import DEMAND, TASKS, Task
 from gridpulse_forecasting.tracking import git_commit, log_backtest
+
+# The forecast job logs (JSON with trace IDs, as a scheduled job); the other commands print reports for a person.
+log = logging.getLogger("gridpulse_forecasting.forecast")
 
 # The first day with two weeks of history behind it, for the 14-day lag.
 FIRST_DAY = dt.date(2024, 11, 13)
@@ -161,19 +165,22 @@ def run_forecast(task_names: list[str], issue: str | None) -> int:
             with tracer.start_as_current_span(f"forecast {name}", attributes={"gridpulse.task": name}) as span:
                 champion = load_champion(name)
                 if champion is None:
-                    print(
-                        f"{name}: no champion in the model registry; run `train --task {name}` first", file=sys.stderr
-                    )
+                    log.error("%s: no champion in the model registry; run `train --task %s` first", name, name)
                     span.set_status(trace.StatusCode.ERROR, "no champion")
                     return 1
                 rows = job.forecast(db, TASKS[name], issue_time, champion)
                 stored = job.store(db, rows)
                 span.set_attributes({"gridpulse.model_version": champion.label, "gridpulse.half_hours": stored})
             p50 = rows["p50"]
-            print(
-                f"{name}: stored {stored} half-hours issued {issue_time:%Y-%m-%d %H:%M}Z with {champion.label}, "
-                f"P50 {p50.min():,.0f} to {p50.max():,.0f} {TASKS[name].unit}",
-                flush=True,
+            log.info(
+                "%s: stored %d half-hours issued %s with %s, P50 %s to %s %s",
+                name,
+                stored,
+                f"{issue_time:%Y-%m-%d %H:%M}Z",
+                champion.label,
+                f"{p50.min():,.0f}",
+                f"{p50.max():,.0f}",
+                TASKS[name].unit,
             )
     return 0
 
@@ -303,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         return build_dataset(TASKS[args.task], args.first, args.last, args.output)
     if args.command == "forecast":
         telemetry.configure("forecast-job")
+        telemetry.configure_logging("forecast-job")
         try:
             return run_forecast(sorted(TASKS) if args.task == "all" else [args.task], args.issue_time)
         finally:

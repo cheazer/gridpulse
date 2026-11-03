@@ -146,3 +146,5 @@ attributes) work as documented.
   (`scheduled`, `does-not-fit`, `no-forecast-coverage`) and whether the forecast was `stale`) and
   `gridpulse.scheduler.saving` (a histogram of kg CO2 saved). Tags are kept to a handful of values, since every
   combination is a separate time series. Tests read them with `MetricCollector`, as an exporter would.
+- **Logs** go to the console as ECS JSON lines (`EcsConsoleFormatter`), the same shape as the Java and Python services
+  write. A line logged inside a span carries its `trace.id` and `span.id`, read from `Activity.Current`.

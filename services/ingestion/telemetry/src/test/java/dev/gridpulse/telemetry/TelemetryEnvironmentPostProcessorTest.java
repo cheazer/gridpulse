@@ -6,9 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.mock.env.MockEnvironment;
 
-class OtlpEnvironmentPostProcessorTest {
+class TelemetryEnvironmentPostProcessorTest {
 
-  private final OtlpEnvironmentPostProcessor processor = new OtlpEnvironmentPostProcessor();
+  private final TelemetryEnvironmentPostProcessor processor =
+      new TelemetryEnvironmentPostProcessor();
 
   @Test
   void anEndpointSendsTracesAndMetricsToItsOtlpHttpPaths() {

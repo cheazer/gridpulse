@@ -237,5 +237,8 @@ Unset, nothing is configured, and tests and local runs stay quiet.
   - The job sends no metrics of its own: a job that never runs can't report that it didn't. The API's forecast age
     catches that case.
   - Spans are flushed before the process exits, or a short-lived job would lose them.
+- **Logs**: the API (uvicorn's own lines included) and the forecast job log to stdout as ECS JSON lines
+  (`EcsFormatter`), the same shape as the Java and .NET services write. A line logged inside a span carries its
+  `trace.id` and `span.id`. The other commands are run by a person, and print readable reports instead.
 - Tests read the telemetry back through in-memory exporters (`tests/test_telemetry.py`), as a collector would
   receive it.

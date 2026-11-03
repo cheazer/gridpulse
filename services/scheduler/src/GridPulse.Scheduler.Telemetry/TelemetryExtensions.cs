@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -29,7 +30,8 @@ public static class TelemetryExtensions
     /// Traces and metrics for one service, sent over OTLP to the collector named by OTEL_EXPORTER_OTLP_ENDPOINT. The
     /// standard OTEL_* environment variables configure the rest (protocol, headers, extra resource attributes), so
     /// nothing here is specific to where the service runs. With no endpoint set nothing is exported: tests and a bare
-    /// <c>dotnet run</c> don't log connection errors to a collector that isn't there.
+    /// <c>dotnet run</c> don't log connection errors to a collector that isn't there. Logs go to the console either way,
+    /// as JSON lines that carry the trace and span IDs (<see cref="EcsConsoleFormatter"/>).
     /// </summary>
     /// <param name="builder">The application builder.</param>
     /// <param name="serviceName">The service.name every span and metric carries, e.g. "scheduler-api".</param>
@@ -50,6 +52,11 @@ public static class TelemetryExtensions
         {
             otel.UseOtlpExporter();
         }
+
+        // Console logs as ECS JSON lines with the current trace and span IDs, whether or not anything is exported.
+        builder.Logging
+            .AddConsole(console => console.FormatterName = EcsConsoleFormatter.FormatterName)
+            .AddConsoleFormatter<EcsConsoleFormatter, EcsConsoleFormatterOptions>(ecs => ecs.ServiceName = serviceName);
 
         return builder;
     }
