@@ -22,7 +22,8 @@ timescaledb:
     limits: { memory: 1Gi }
 
 redpanda:
-  image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
+  # Docker Hub's copy of the release Compose runs: docker.redpanda.com rate-limits CI runners.
+  image: redpandadata/redpanda:v26.2.4
   storage: 2Gi
   memory: 768M # Redpanda's own allocation (--memory); the container limit leaves room on top
   resources:
