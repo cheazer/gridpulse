@@ -1,0 +1,91 @@
+# GridPulse's services. Every setting has a working default except image.tag, which each install must choose.
+# Passwords are never values: deploy/helm/create-secrets.sh creates the Secret below from .env.
+
+image:
+  # Prefix for every image, e.g. "ghcr.io/cheazer/". Empty for images loaded straight into the cluster (kind).
+  registry: ""
+  # The same tag for every image, so a release is one consistent build. Required.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Created outside the chart (create-secrets.sh), so no password is ever rendered by Helm or stored in a release.
+# Each workload reads only the keys it needs.
+secretName: gridpulse-secrets
+
+# External dependencies, as a managed database or Kafka would be in production.
+database:
+  host: timescaledb
+  port: 5432
+  name: gridpulse
+kafka:
+  bootstrapServers: redpanda:9092
+mlflow:
+  trackingUri: http://mlflow:5000
+
+telemetry:
+  # The OpenTelemetry collector. Empty: services export nothing (their logs still go to stdout).
+  otlpEndpoint: ""
+  environment: kubernetes
+
+# The images' numeric users, so Kubernetes can check runAsNonRoot (it can't for a user given by name).
+users:
+  default: 10001 # Java, Python and the db image
+  dotnet: 1654 # APP_UID in Microsoft's chiseled images
+
+# One block per workload. Memory has a limit (a leak gets the pod restarted, not the node starved); CPU has a request
+# only, since a CPU limit throttles a busy pod even when the node is idle.
+ingestionApp:
+  repository: gridpulse-ingestion-app
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+
+timescaleSink:
+  repository: gridpulse-timescale-sink
+  replicas: 1 # up to 6, one per partition
+  resources:
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 768Mi }
+
+forecastingApi:
+  repository: gridpulse-forecasting-api
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+schedulerApi:
+  repository: gridpulse-scheduler-api
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits: { memory: 256Mi }
+
+schedulerDashboard:
+  repository: gridpulse-scheduler-dashboard
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
+
+# CronJobs from the forecasting image (ADR-0011). Times are UTC.
+forecastJob:
+  repository: gridpulse-forecasting-api
+  schedule: "5 */6 * * *" # every 6 hours: gridpulse.forecast.age alerts after 7
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+
+trainJob:
+  repository: gridpulse-forecasting-api
+  schedule: "30 2 * * 1" # Mondays: a week of new data per retrain
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 3Gi }
+
+# Hook Jobs, before install and every upgrade: migrations, then the service logins.
+db:
+  repository: gridpulse-db
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 384Mi }

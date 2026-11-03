@@ -1,0 +1,49 @@
+{{- $ctx := dict "root" . "component" "scheduler-dashboard" -}}
+{{- $v := .Values.schedulerDashboard -}}
+# The Blazor dashboard, a client of the scheduling API. It has /health only: it can serve its pages whether or not the
+# API is up, so readiness uses /health too.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels:
+      {{- include "gridpulse.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gridpulse.labels" $ctx | nindent 8 }}
+    spec:
+      {{- include "gridpulse.podSecurity" (dict "user" .Values.users.dotnet) | nindent 6 }}
+      containers:
+        - name: scheduler-dashboard
+          image: {{ include "gridpulse.image" (dict "root" . "repository" $v.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            - name: SCHEDULER_API_URL
+              value: "http://{{ include "gridpulse.name" (dict "root" . "component" "scheduler-api") }}:8080"
+            {{- include "gridpulse.telemetryEnv" . | nindent 12 }}
+          {{- include "gridpulse.httpProbes" (dict "ready" "/health") | nindent 10 }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          {{- include "gridpulse.containerSecurity" . | nindent 10 }}
+          {{- include "gridpulse.tmpVolumeMount" . | nindent 10 }}
+      {{- include "gridpulse.tmpVolume" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "gridpulse.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - { name: http, port: 8080, targetPort: http }
