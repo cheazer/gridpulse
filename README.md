@@ -21,7 +21,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 ```
 schemas/events/v1/   Shared, versioned event contracts (JSON Schema) + golden examples
 services/            One folder per service
-db/migrations/       TimescaleDB schema (Flyway)
+db/                  TimescaleDB schema (Flyway migrations), login script, and the image that applies both
 deploy/              Docker Compose (local) and Helm (k8s)
 observability/       OpenTelemetry collector, Prometheus, Tempo and Grafana configuration, dashboards
 loadtest/k6/         Load tests for the scheduling API
@@ -61,7 +61,8 @@ On start-up four one-shot jobs run: `redpanda-init` creates the topics and their
 TimescaleDB migrations in [db/migrations](db/migrations) with Flyway, and `db-users` creates per-service logins
 (the forecasting service's read-only one, the forecast job's, which may also write model forecasts, and MLflow's,
 which owns its own `mlflow` database) with passwords from
-`.env`. All four are idempotent.
+`.env`. All four are idempotent. `migrate` and `db-users` run one image, built from [db/Dockerfile](db/Dockerfile)
+with the migrations inside it, so Kubernetes runs exactly the same schema version as Compose.
 
 Then `ingestion-app` polls the live Carbon Intensity API (on start-up and every half-hour) and `timescale-sink`
 writes the events to TimescaleDB. The first build of the two Java images takes a few minutes. A minute after

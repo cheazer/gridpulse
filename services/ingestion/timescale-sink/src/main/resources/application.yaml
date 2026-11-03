@@ -25,6 +25,10 @@ spring:
       concurrency: 3
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: true # /actuator/health/liveness and /readiness, off Kubernetes too (Compose, tests)
   metrics:
     distribution:
       # Buckets for batch durations, so dashboards and alerts can use percentiles, not just the mean.

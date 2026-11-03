@@ -8,7 +8,7 @@ on:
     paths: &paths
       - "services/**"
       - "!services/**/*.md"
-      - "db/migrations/**"
+      - "db/**"
       - "schemas/**"
       - "deploy/compose/**"
       - "compose.yaml"

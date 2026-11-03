@@ -60,6 +60,17 @@ The model is hand-written records rather than generated from the schemas: JSON S
 reproduces the original JSON. The same files drive the Python validator, so the two implementations can't
 drift apart unnoticed.
 
+## Health probes
+
+Both apps serve Spring Boot Actuator's probe endpoints on port 8080, for Kubernetes (step 4.3), and nothing else over
+HTTP:
+- `/actuator/health/liveness`: the app is running. Kubernetes restarts the pod if this fails.
+- `/actuator/health/readiness`: start-up has finished, including the ingestion app's first polls.
+
+Neither includes Kafka or the database. A broker outage would otherwise make Kubernetes restart every pod, which
+fixes nothing and loses the in-flight work; the freshness metrics (`gridpulse.sink.write.age`) catch it instead.
+Backfill mode turns the web server off, so the process still exits when the backfill is done.
+
 ## Telemetry
 
 Both apps send traces and metrics over OTLP/HTTP using Spring Boot's own support (`spring-boot-starter-opentelemetry`:
