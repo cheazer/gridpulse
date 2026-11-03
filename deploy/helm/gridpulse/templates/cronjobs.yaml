@@ -1,0 +1,52 @@
+{{- range $job := list
+      (dict "component" "forecast-job" "values" .Values.forecastJob "command" "forecast" "deadline" 900
+            "password" "FORECAST_JOB_DB_PASSWORD")
+      (dict "component" "train-job" "values" .Values.trainJob "command" "train" "deadline" 7200
+            "password" "FORECAST_DB_PASSWORD") }}
+{{- $ctx := dict "root" $ "component" $job.component }}
+{{- $v := $job.values }}
+---
+# ADR-0011: forecast-job stores the next 48 hours from each task's champion, as the 'forecast_job' login (may write
+# model forecasts); train-job retrains, gates and registers, as the read-only 'forecasting' login. Never two runs at
+# once; a missed run isn't made up later (the next one covers it). One retry, then the Job fails visibly.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  schedule: {{ $v.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ $job.deadline }}
+      template:
+        metadata:
+          labels:
+            {{- include "gridpulse.labels" $ctx | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          {{- include "gridpulse.podSecurity" (dict "user" $.Values.users.default) | nindent 10 }}
+          containers:
+            - name: {{ $job.component }}
+              image: {{ include "gridpulse.image" (dict "root" $ "repository" $v.repository) }}
+              imagePullPolicy: {{ $.Values.image.pullPolicy }}
+              command: ["python", "-m", "gridpulse_forecasting", {{ $job.command | quote }}, "--task", "all"]
+              env:
+                {{- include "gridpulse.databaseEnv" $ | nindent 16 }}
+                {{- include "gridpulse.secretEnv" (dict "root" $ "name" $job.password) | nindent 16 }}
+                - name: MLFLOW_TRACKING_URI
+                  value: {{ $.Values.mlflow.trackingUri | quote }}
+                {{- include "gridpulse.telemetryEnv" $ | nindent 16 }}
+              resources:
+                {{- toYaml $v.resources | nindent 16 }}
+              {{- include "gridpulse.containerSecurity" $ | nindent 14 }}
+              {{- include "gridpulse.tmpVolumeMount" $ | nindent 14 }}
+          {{- include "gridpulse.tmpVolume" $ | nindent 10 }}
+{{- end }}

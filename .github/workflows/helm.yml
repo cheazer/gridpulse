@@ -1,0 +1,37 @@
+name: helm
+
+# The chart lints, renders, and renders to valid Kubernetes objects. Installing it on a real cluster is the kind job
+# (step 4.5).
+on:
+  push:
+    branches: [main]
+    paths: ["deploy/helm/**", ".github/workflows/helm.yml"]
+  pull_request:
+    paths: ["deploy/helm/**", ".github/workflows/helm.yml"]
+
+permissions:
+  contents: read
+
+env:
+  KUBECONFORM_VERSION: v0.7.0
+
+jobs:
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.2
+      - name: Lint
+        run: helm lint --strict deploy/helm/gridpulse --set image.tag=ci
+      - name: A missing image tag fails
+        run: "! helm template gridpulse deploy/helm/gridpulse"
+      - name: Rendered manifests are valid Kubernetes objects
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz kubeconform
+          helm template gridpulse deploy/helm/gridpulse --set image.tag=ci --set telemetry.otlpEndpoint=http://collector:4318 \
+            | ./kubeconform -strict -summary
+      - name: The secrets script parses
+        run: bash -n deploy/helm/create-secrets.sh

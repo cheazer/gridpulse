@@ -1,0 +1,51 @@
+{{- $ctx := dict "root" . "component" "scheduler-api" -}}
+{{- $v := .Values.schedulerApi -}}
+# The carbon-aware scheduling API (ADR-0013). /ready needs the database; the forecasting API is only "degraded" when
+# down, since the scheduler can fall back to NESO's forecasts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels:
+      {{- include "gridpulse.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gridpulse.labels" $ctx | nindent 8 }}
+    spec:
+      {{- include "gridpulse.podSecurity" (dict "user" .Values.users.dotnet) | nindent 6 }}
+      containers:
+        - name: scheduler-api
+          image: {{ include "gridpulse.image" (dict "root" . "repository" $v.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            {{- include "gridpulse.databaseEnv" . | nindent 12 }}
+            {{- include "gridpulse.secretEnv" (dict "root" . "name" "SCHEDULER_DB_PASSWORD") | nindent 12 }}
+            - name: FORECASTING_API_URL
+              value: "http://{{ include "gridpulse.name" (dict "root" . "component" "forecasting-api") }}:8000"
+            {{- include "gridpulse.telemetryEnv" . | nindent 12 }}
+          {{- include "gridpulse.httpProbes" (dict) | nindent 10 }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          {{- include "gridpulse.containerSecurity" . | nindent 10 }}
+          {{- include "gridpulse.tmpVolumeMount" . | nindent 10 }}
+      {{- include "gridpulse.tmpVolume" . | nindent 6 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "gridpulse.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - { name: http, port: 8080, targetPort: http }

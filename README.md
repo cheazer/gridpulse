@@ -6,7 +6,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 > **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
 > and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
 > champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> In progress: Phase 4, Kubernetes and observability (telemetry in every service, and the observability stack, done). This README grows into the full write-up in Phase 5.
+> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm chart, done). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -22,7 +22,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 schemas/events/v1/   Shared, versioned event contracts (JSON Schema) + golden examples
 services/            One folder per service
 db/                  TimescaleDB schema (Flyway migrations), login script, and the image that applies both
-deploy/              Docker Compose (local) and Helm (k8s)
+deploy/              Docker Compose (local) and the Helm chart (Kubernetes)
 observability/       OpenTelemetry collector, Prometheus, Tempo and Grafana configuration, dashboards
 loadtest/k6/         Load tests for the scheduling API
 docs/adr/            Architecture decision records
@@ -202,6 +202,18 @@ much CO2 that saves against starting now, with a likely range. A Blazor dashboar
   APIs and a trained model, which would make the test slow and flaky without testing more of the wiring.
 
 Details: [services/scheduler](services/scheduler/README.md), [ADR-0013](docs/adr/0013-scheduler-design.md).
+
+## Kubernetes
+
+[deploy/helm](deploy/helm) has the Helm chart for GridPulse's services, from the same images as Compose:
+- **Order** comes from hooks and probes, not start-up order. Migrations and the service logins run as Helm hook Jobs
+  before every install and upgrade, and readiness probes keep traffic from a service until its dependencies are up.
+- **Locked-down pods** that pass the "restricted" Pod Security Standard, with read-only root filesystems.
+- **CronJobs** for the forecast job (every 6 hours) and retraining (weekly).
+- **No passwords in Helm:** a script creates the Secret from `.env`.
+
+TimescaleDB, Kafka and MLflow are addresses in the chart's values, as managed services would be in production.
+The [chart's README](deploy/helm/README.md) explains the design and how to install it.
 
 ## Observability
 

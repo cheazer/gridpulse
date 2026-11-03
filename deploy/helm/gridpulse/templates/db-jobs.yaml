@@ -1,0 +1,60 @@
+{{- $v := .Values.db -}}
+{{- range $job := list (dict "component" "db-migrate" "weight" "-10") (dict "component" "db-users" "weight" "-5") }}
+{{- $ctx := dict "root" $ "component" $job.component }}
+---
+# Helm hook: runs before the apps on every install and upgrade, and Helm waits for it to finish; a failure stops the
+# release, so apps never start against a schema they don't expect. db-migrate (weight -10) applies the migrations
+# baked into the db image; db-users (-5) then creates the service logins with passwords from the Secret. Both are
+# idempotent. A failed Job is kept for `kubectl logs`; a succeeded one is deleted.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: {{ $job.weight | quote }}
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "gridpulse.labels" $ctx | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      {{- include "gridpulse.podSecurity" (dict "user" $.Values.users.default) | nindent 6 }}
+      containers:
+        - name: {{ $job.component }}
+          image: {{ include "gridpulse.image" (dict "root" $ "repository" $v.repository) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          {{- if eq $job.component "db-migrate" }}
+          args: ["migrate"]
+          env:
+            - name: FLYWAY_URL
+              value: "jdbc:postgresql://{{ $.Values.database.host }}:{{ $.Values.database.port }}/{{ $.Values.database.name }}"
+            {{- include "gridpulse.secretEnv" (dict "root" $ "name" "FLYWAY_USER" "key" "POSTGRES_USER") | nindent 12 }}
+            {{- include "gridpulse.secretEnv" (dict "root" $ "name" "FLYWAY_PASSWORD" "key" "POSTGRES_PASSWORD") | nindent 12 }}
+          {{- else }}
+          command: ["create-db-users.sh"]
+          env:
+            - name: PGHOST
+              value: {{ $.Values.database.host | quote }}
+            - name: PGPORT
+              value: {{ $.Values.database.port | quote }}
+            - name: PGDATABASE
+              value: {{ $.Values.database.name | quote }}
+            {{- include "gridpulse.secretEnv" (dict "root" $ "name" "PGUSER" "key" "POSTGRES_USER") | nindent 12 }}
+            {{- include "gridpulse.secretEnv" (dict "root" $ "name" "PGPASSWORD" "key" "POSTGRES_PASSWORD") | nindent 12 }}
+            {{- range $key := list "FORECAST_DB_PASSWORD" "FORECAST_JOB_DB_PASSWORD" "MLFLOW_DB_PASSWORD" "SCHEDULER_DB_PASSWORD" }}
+            {{- include "gridpulse.secretEnv" (dict "root" $ "name" $key) | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          {{- include "gridpulse.containerSecurity" $ | nindent 10 }}
+          {{- include "gridpulse.tmpVolumeMount" $ | nindent 10 }}
+      {{- include "gridpulse.tmpVolume" $ | nindent 6 }}
+{{- end }}

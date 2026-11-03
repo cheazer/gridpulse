@@ -1,0 +1,9 @@
+apiVersion: v2
+name: gridpulse
+description: >-
+  GridPulse's own services on Kubernetes: ingestion, the sink, the forecasting API and jobs, the scheduler API and
+  dashboard. TimescaleDB, Kafka and MLflow are external: their addresses are values (step 4.4 provides them for
+  development).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
