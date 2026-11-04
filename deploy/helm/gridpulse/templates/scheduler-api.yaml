@@ -9,7 +9,9 @@ metadata:
   labels:
     {{- include "gridpulse.labels" $ctx | nindent 4 }}
 spec:
-  replicas: {{ $v.replicas }}
+  {{- if not $v.autoscaling.enabled }}
+  replicas: {{ $v.replicas }} # with autoscaling the HPA owns this; setting it here would reset it on every upgrade
+  {{- end }}
   selector:
     matchLabels:
       {{- include "gridpulse.selectorLabels" $ctx | nindent 6 }}
@@ -49,3 +51,35 @@ spec:
     {{- include "gridpulse.selectorLabels" $ctx | nindent 4 }}
   ports:
     - { name: http, port: 8080, targetPort: http }
+{{- if $v.autoscaling.enabled }}
+---
+# More pods when the API is busy, fewer when it isn't: CPU is what a schedule request spends (it searches the forecast
+# for the cleanest window), and the API is stateless, so any pod can answer any request. Scaling down waits five
+# minutes (Kubernetes' default) so a burst doesn't make it flap.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "gridpulse.name" $ctx }}
+  labels:
+    {{- include "gridpulse.labels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "gridpulse.name" $ctx }}
+  minReplicas: {{ $v.autoscaling.minReplicas }}
+  maxReplicas: {{ $v.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $v.autoscaling.targetCPUUtilizationPercentage }}
+  behavior:
+    # A new pod's first requests spike its CPU while .NET compiles the hot paths (measured at 112-180% of request for
+    # under a minute), and by default the autoscaler adds pods at once, each of which then spikes the same way. Only
+    # scale up on load that lasts a minute.
+    scaleUp:
+      stabilizationWindowSeconds: 60
+{{- end }}

@@ -6,7 +6,7 @@ and expose a carbon-aware scheduling API that finds the lowest-carbon window for
 > **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
 > and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
 > champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, and the Helm charts with the whole system on kind, tested end to end in CI, done). This README grows into the full write-up in Phase 5.
+> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, the Helm charts with the whole system on kind, tested end to end in CI, alerts, and a load test, done). This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -212,6 +212,9 @@ Details: [services/scheduler](services/scheduler/README.md), [ADR-0013](docs/adr
   before every install and upgrade, and readiness probes keep traffic from a service until its dependencies are up.
 - **Locked-down pods** that pass the "restricted" Pod Security Standard, with read-only root filesystems.
 - **CronJobs** for the forecast job (every 6 hours) and retraining (weekly).
+- **Autoscaling, measured.** The scheduling API has a HorizontalPodAutoscaler on CPU. A [k6](https://k6.io/) load
+  test sized it ([results](docs/results/load-test.md)): about 1.8 ms of CPU per request, p95 under 25 ms up to 100
+  requests a second on a 2-CPU node, with no errors.
 - **No passwords in Helm:** a script creates the Secret from `.env`.
 
 TimescaleDB, Kafka and MLflow are addresses in the chart's values, as managed services would be in production. A second

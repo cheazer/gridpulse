@@ -25,7 +25,7 @@ about 5 GB of memory. In a Codespace, stop Compose first (`docker compose stop` 
 | `ingestion-app` | Deployment, 1 replica, `Recreate` | Two would poll every source twice. `ingestionApp.enabled=false` leaves it out, as CI does |
 | `timescale-sink` | Deployment | Replicas share the topics' partitions through the consumer group |
 | `forecasting-api` | Deployment + Service :8000 | |
-| `scheduler-api` | Deployment + Service :8080 | |
+| `scheduler-api` | Deployment + Service :8080, HorizontalPodAutoscaler | 1 to 4 pods at 70% of a 100m CPU request, sized by the [load test](../../docs/results/load-test.md) |
 | `scheduler-dashboard` | Deployment + Service :8080 | |
 | `db-migrate`, `db-users` | Jobs, Helm hooks | Before every install and upgrade, in that order |
 | `forecast-job` | CronJob, every 6 hours | |
