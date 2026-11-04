@@ -1,0 +1,202 @@
+# Unit tests for observability/prometheus/rules/gridpulse.yml, run with
+#   promtool test rules observability/prometheus/tests/gridpulse_test.yml
+# Each test feeds made-up series through the real rules, minute by minute, and checks which alerts fire, with which
+# labels and annotations. Series notation: 'a+bxN' is a, then N more samples each b higher; '_' is a missing sample.
+
+rule_files:
+  - ../rules/gridpulse.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Weather stops arriving: its write age grows a minute every minute. Demand keeps being written.
+  - interval: 1m
+    input_series:
+      - series: 'gridpulse_sink_write_age_seconds{service_name="timescale-sink", event_type="weather"}'
+        values: '0+60x150'
+      - series: 'gridpulse_sink_write_age_seconds{service_name="timescale-sink", event_type="demand"}'
+        values: '30x150'
+    alert_rule_test:
+      - eval_time: 2h05m # past two hours, but not for the 10 minutes the alert waits
+        alertname: GridPulseDataStale
+        exp_alerts: []
+      - eval_time: 2h15m
+        alertname: GridPulseDataStale
+        exp_alerts:
+          - exp_labels: { severity: critical, event_type: weather }
+            exp_annotations:
+              summary: "No weather data written for 2h 15m 0s"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsedatastale
+
+  # The carbon forecast stops being refreshed; demand's is fresh.
+  - interval: 1m
+    input_series:
+      - series: 'gridpulse_forecast_age_seconds{service_name="forecasting-api", task="carbon"}'
+        values: '0+60x480'
+      - series: 'gridpulse_forecast_age_seconds{service_name="forecasting-api", task="demand"}'
+        values: '600x480'
+    alert_rule_test:
+      - eval_time: 7h10m
+        alertname: GridPulseForecastsStale
+        exp_alerts: []
+      - eval_time: 7h20m
+        alertname: GridPulseForecastsStale
+        exp_alerts:
+          - exp_labels: { severity: warning, task: carbon }
+            exp_annotations:
+              summary: "The newest carbon forecast is 7h 20m 0s old"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseforecastsstale
+
+  # Weather: 10 of every 110 events dead-lettered (9%). Carbon: 1 of every 101 (1%), which is normal.
+  - interval: 1m
+    input_series:
+      - series: 'gridpulse_ingestion_events_total{event_type="weather", outcome="published"}'
+        values: '0+100x60'
+      - series: 'gridpulse_ingestion_events_total{event_type="weather", outcome="dead-lettered"}'
+        values: '0+10x60'
+      - series: 'gridpulse_ingestion_events_total{event_type="carbon_intensity", outcome="published"}'
+        values: '0+100x60'
+      - series: 'gridpulse_ingestion_events_total{event_type="carbon_intensity", outcome="dead-lettered"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: GridPulseEventsDeadLettered
+        exp_alerts:
+          - exp_labels: { severity: warning, event_type: weather }
+            exp_annotations:
+              summary: "9.091% of weather events are being dead-lettered"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseeventsdeadlettered
+
+  # Three undecodable records at minute 10; none after. The alert clears once they're 15 minutes old.
+  - interval: 1m
+    input_series:
+      - series: 'gridpulse_sink_events_total{event_type="unknown", outcome="undecodable"}'
+        values: '0x9 3x30'
+      - series: 'gridpulse_sink_events_total{event_type="demand", outcome="written"}'
+        values: '0+50x40'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GridPulseSinkUndecodable
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: GridPulseSinkUndecodable
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "The sink couldn't decode records in the last 15 minutes"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsesinkundecodable
+      - eval_time: 35m
+        alertname: GridPulseSinkUndecodable
+        exp_alerts: []
+
+  # Every schedule request takes between 1 and 2.5 s, so the p95 interpolates to 2.425 s. The dashboard's requests
+  # are fast and don't count.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="0.5"}'
+        values: '0x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="1"}'
+        values: '0x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="2.5"}'
+        values: '0+10x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="+Inf"}'
+        values: '0+10x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-dashboard", http_route="/", le="0.5"}'
+        values: '0+10x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-dashboard", http_route="/", le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GridPulseSchedulerSlow
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: GridPulseSchedulerSlow
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Scheduling requests are slow: p95 2.425s"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseschedulerslow
+
+  # Fast schedule requests: no alert.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="0.5"}'
+        values: '0+10x30'
+      - series: 'http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule", le="+Inf"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GridPulseSchedulerSlow
+        exp_alerts: []
+
+  # 10 of every 100 scheduling API responses are 503s.
+  - interval: 1m
+    input_series:
+      - series: 'http_server_request_duration_seconds_count{service_name="scheduler-api", http_response_status_code="200"}'
+        values: '0+90x30'
+      - series: 'http_server_request_duration_seconds_count{service_name="scheduler-api", http_response_status_code="503"}'
+        values: '0+10x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: GridPulseSchedulerErrors
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: GridPulseSchedulerErrors
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: "10% of scheduling API requests are failing"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseschedulererrors
+
+  # The sink stops reporting at 30m; the scheduler keeps going; the forecast job finishing is expected and ignored.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: '1x90'
+      - series: 'jvm_threads_live_threads{service_name="timescale-sink"}'
+        values: '20x30 _x60'
+      - series: 'process_cpu_time_seconds_total{service_name="scheduler-api"}'
+        values: '0+1x90'
+      - series: 'http_client_request_duration_seconds_count{service_name="forecast-job"}'
+        values: '1x5 _x85'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: GridPulseServiceSilent
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: GridPulseServiceSilent
+        exp_alerts:
+          - exp_labels: { severity: critical, service_name: timescale-sink }
+            exp_annotations:
+              summary: "timescale-sink has stopped reporting"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseservicesilent
+      # Still firing long after: the alert's own ALERTS series doesn't count as the sink reporting.
+      - eval_time: 90m
+        alertname: GridPulseServiceSilent
+        exp_alerts:
+          - exp_labels: { severity: critical, service_name: timescale-sink }
+            exp_annotations:
+              summary: "timescale-sink has stopped reporting"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseservicesilent
+
+  # The collector goes down: one alert for it, none for the services that go quiet with it.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="otel-collector"}'
+        values: '1x30 0x30'
+      - series: 'jvm_threads_live_threads{service_name="timescale-sink"}'
+        values: '20x30 _x30'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: GridPulseCollectorDown
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: GridPulseCollectorDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: otel-collector }
+            exp_annotations:
+              summary: "Prometheus can't scrape the OpenTelemetry collector (otel-collector)"
+              runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsecollectordown
+      - eval_time: 50m
+        alertname: GridPulseServiceSilent
+        exp_alerts: []

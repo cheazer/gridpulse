@@ -250,20 +250,28 @@ scheduler-api, dashboard ──────┘                              └�
   ```bash
   docker compose logs --no-log-prefix scheduler-api | jq -r '"\(."@timestamp") \(.log.level) \(.message) \(."trace.id" // "")"'
   ```
-- **Alerts go on symptoms** (step 4.6). The two metrics that matter:
-  - `gridpulse_forecast_age_seconds`, how old the newest forecast is;
-  - `gridpulse_sink_write_age_seconds`, how long since each kind of data was last stored.
+- **Alerts go on symptoms,** what a user of the data or the scheduler would notice, rather than on every cause.
+  The rules are in [observability/prometheus/rules](observability/prometheus/rules), and each links to its section
+  of the [runbook](docs/runbook.md). The two that matter most:
+  - `gridpulse_forecast_age_seconds`: how old the newest forecast is (over 7 hours fires `GridPulseForecastsStale`);
+  - `gridpulse_sink_write_age_seconds`: how long since each kind of data was last stored (over 2 hours fires
+    `GridPulseDataStale`).
 
-  Whatever breaks upstream, one of them grows.
+  Whatever breaks upstream, one of them grows. The others cover dead-lettered and undecodable events, the
+  scheduler's latency and errors, the collector, and any service that stops reporting.
+- **Alert rules have tests,** like the code. `promtool test rules` feeds made-up series through the real rules and
+  checks which alerts fire, with which labels (the `observability` workflow). There's no Alertmanager yet: firing
+  alerts show in Prometheus and at the top of the dashboard.
 - **Configuration as code.** The collector, Prometheus, Tempo and Grafana are configured from
   [observability/](observability). Grafana's data sources and the **GridPulse overview** dashboard are provisioned
   from files there, and can't be edited in the UI.
-- **What the dashboard shows:** data freshness, request rates, latency and errors per service, the ingestion
+- **What the dashboard shows:** firing alerts, data freshness, request rates, latency and errors per service, the ingestion
   pipeline (events published, dead-lettered and written, source API latency) and scheduling (outcomes, CO₂ saved),
   with links into the traces.
 
-![GridPulse overview dashboard in Grafana: forecast age, time since data was last written, consumer lag, request
-rates and latency, the ingestion pipeline and scheduling, with recent traces](docs/images/grafana-overview.png)
+![GridPulse overview dashboard in Grafana: firing alerts (here the forecasts are stale, since nothing runs the
+forecast job on a schedule in Compose), forecast age, time since data was last written, consumer lag, request rates
+and latency, the ingestion pipeline and scheduling, with recent traces](docs/images/grafana-overview.png)
 
 ## Data sources
 

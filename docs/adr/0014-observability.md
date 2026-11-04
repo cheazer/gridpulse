@@ -65,6 +65,11 @@ registry is set to seconds.
 These catch a crashed job, a stopped poller, an unreachable broker and a stuck sink alike. Metrics sent from inside a
 job couldn't show a job that never ran.
 
+The rules (step 4.6) live in `observability/prometheus/rules`. Each links to a section of `docs/runbook.md`, and
+each is unit-tested with `promtool test rules`, including the cases where an alert must stay quiet. There's no
+Alertmanager: where notifications go (email, chat, a pager) depends on the deployment, and firing alerts already
+show in Prometheus and on the dashboard.
+
 **Logs carry the trace (step 4.2b).** Every service writes one JSON object per line to stdout, in the
 [Elastic Common Schema](https://www.elastic.co/guide/en/ecs/current/index.html): `@timestamp`, `log.level`,
 `log.logger`, `service.name`, `message`, `error.*`, and `trace.id` and `span.id` when the line was logged inside a span.

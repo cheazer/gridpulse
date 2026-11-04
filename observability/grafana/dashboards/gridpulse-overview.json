@@ -17,6 +17,124 @@
   "panels": [
     {
       "type": "row",
+      "title": "Is anything wrong?",
+      "id": 17,
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "table",
+      "title": "Firing alerts",
+      "description": "GridPulse's alert rules (observability/prometheus/rules) that are firing now. Each links to its section of docs/runbook.md in Prometheus's alert view.",
+      "id": 18,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No alerts firing"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "severity"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(?!alertname$|severity$).*"
+            },
+            "properties": [
+              {
+                "id": "noValue",
+                "value": " "
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "severity",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "alertstate": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "severity": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
       "title": "Is data fresh?",
       "id": 1,
       "collapsed": false,
@@ -24,7 +142,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 7
       },
       "panels": []
     },
@@ -41,7 +159,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 1
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -109,7 +227,7 @@
         "h": 6,
         "w": 10,
         "x": 8,
-        "y": 1
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -177,7 +295,7 @@
         "h": 6,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 8
       },
       "fieldConfig": {
         "defaults": {
@@ -241,7 +359,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 14
       },
       "panels": []
     },
@@ -258,7 +376,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 8
+        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -308,7 +426,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 8
+        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -358,7 +476,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 8
+        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -406,7 +524,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 23
       },
       "panels": []
     },
@@ -423,7 +541,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 17
+        "y": 24
       },
       "fieldConfig": {
         "defaults": {
@@ -473,7 +591,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 17
+        "y": 24
       },
       "fieldConfig": {
         "defaults": {
@@ -523,7 +641,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 17
+        "y": 24
       },
       "fieldConfig": {
         "defaults": {
@@ -569,7 +687,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 32
       },
       "panels": []
     },
@@ -586,7 +704,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 26
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -636,7 +754,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 26
+        "y": 33
       },
       "fieldConfig": {
         "defaults": {
@@ -695,7 +813,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 26
+        "y": 33
       },
       "targets": [
         {

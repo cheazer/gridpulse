@@ -53,6 +53,7 @@ helm upgrade --install gridpulse-dev deploy/helm/gridpulse-dev --namespace "$NAM
   --set image.tag="$TAG" \
   --set-file observability.config.collector=observability/otel-collector/config.yaml \
   --set-file observability.config.prometheus=observability/prometheus/prometheus.yml \
+  --set-file observability.config.prometheusRules=observability/prometheus/rules/gridpulse.yml \
   --set-file observability.config.tempo=observability/tempo/tempo.yaml \
   --set-file observability.config.grafanaDatasources=observability/grafana/provisioning/datasources/datasources.yaml \
   --set-file observability.config.grafanaDashboardProviders=observability/grafana/provisioning/dashboards/dashboards.yaml \
