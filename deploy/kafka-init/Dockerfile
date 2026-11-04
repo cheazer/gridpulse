@@ -3,7 +3,8 @@
 #   docker build -f deploy/kafka-init/Dockerfile .
 # Compose's redpanda-init and schema-init run it, and so does the Kubernetes init Job, so both platforms create the
 # same topics and register the same schemas. Like the db image, the schemas ship with the release that uses them.
-FROM docker.redpanda.com/redpandadata/redpanda:v26.2.4 AS redpanda
+# Docker Hub's copy of the same release: docker.redpanda.com rate-limits CI runners (429 Too Many Requests).
+FROM redpandadata/redpanda:v26.2.4 AS redpanda
 
 FROM python:3.12.16-slim
 # rpk is one static binary: no need for the whole broker image.
