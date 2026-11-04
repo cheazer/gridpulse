@@ -1,0 +1,33 @@
+name: observability
+
+# Prometheus's config and alert rules are valid, and the rules' unit tests pass (observability/prometheus/tests),
+# with promtool from the same Prometheus image Compose and the cluster run.
+on:
+  push:
+    branches: [main]
+    paths: ["observability/**", ".github/workflows/observability.yml"]
+  pull_request:
+    paths: ["observability/**", ".github/workflows/observability.yml"]
+
+permissions:
+  contents: read
+
+env:
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0
+
+jobs:
+  prometheus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Mounted where Prometheus finds them at runtime, so the config's rule_files glob is checked as well.
+      - name: Config and rules are valid
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/observability/prometheus/rules:/etc/prometheus/rules:ro" \
+            "$PROMETHEUS_IMAGE" check config /etc/prometheus/prometheus.yml
+      - name: Alert rule unit tests
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/observability/prometheus:/p:ro" -w /p \
+            "$PROMETHEUS_IMAGE" test rules tests/gridpulse_test.yml

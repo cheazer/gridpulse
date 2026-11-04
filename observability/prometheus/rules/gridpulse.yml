@@ -1,0 +1,122 @@
+# GridPulse's alerts (step 4.6, ADR-0014): on symptoms a user of the data or the scheduler would notice, not on every
+# cause. Unit-tested with promtool (observability/prometheus/tests/), and loaded by Prometheus in Compose and in the
+# cluster. There's no Alertmanager yet: firing alerts show in Prometheus (/alerts) and on the Grafana dashboard.
+#
+# Severity: critical means GridPulse is giving wrong or no answers now; warning means it's degraded or about to be.
+# Each alert links to its section of docs/runbook.md: what it means and what to check first.
+
+groups:
+  - name: gridpulse-recording
+    rules:
+      # One series per service that is reporting right now, through any metric. Left out: finished jobs, which stop
+      # reporting by design, and series Prometheus makes itself (this rule's output and ALERTS), which carry
+      # service_name too and would keep a dead service "reporting" forever. Recorded so GridPulseServiceSilent can look
+      # back hours without scanning every series each time.
+      - record: gridpulse:service_reporting
+        expr: >-
+          group by (service_name) (
+            {service_name!="", service_name!~".*-job", __name__!~"ALERTS|ALERTS_FOR_STATE|gridpulse:.+"}
+          )
+
+  - name: gridpulse-freshness
+    rules:
+      - alert: GridPulseDataStale
+        # Normally under 30 minutes, an hour for weather (polled hourly): two hours means something has stopped.
+        expr: max by (event_type) (gridpulse_sink_write_age_seconds) > 2 * 3600
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No {{ $labels.event_type }} data written for {{ $value | humanizeDuration }}"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsedatastale
+
+      - alert: GridPulseForecastsStale
+        # The job runs every 6 hours, so 7 hours is a missed run. A warning, not critical: the scheduler falls back to
+        # NESO's forecast and still answers.
+        expr: max by (task) (gridpulse_forecast_age_seconds) > 7 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The newest {{ $labels.task }} forecast is {{ $value | humanizeDuration }} old"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseforecastsstale
+
+  - name: gridpulse-pipeline
+    rules:
+      - alert: GridPulseEventsDeadLettered
+        # A few dead letters are normal (a source occasionally sends a value outside its documented range); more than
+        # 5% of a type's events means the source has changed shape.
+        expr: >-
+          sum by (event_type) (rate(gridpulse_ingestion_events_total{outcome="dead-lettered"}[1h]))
+            / sum by (event_type) (rate(gridpulse_ingestion_events_total[1h]))
+          > 0.05
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of {{ $labels.event_type }} events are being dead-lettered"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseeventsdeadlettered
+
+      - alert: GridPulseSinkUndecodable
+        # The ingestion app validates everything it publishes, so any record the sink can't decode is a contract break
+        # between the two.
+        expr: sum(increase(gridpulse_sink_events_total{outcome="undecodable"}[15m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "The sink couldn't decode records in the last 15 minutes"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsesinkundecodable
+
+  - name: gridpulse-scheduler
+    rules:
+      - alert: GridPulseSchedulerSlow
+        expr: >-
+          histogram_quantile(0.95, sum by (le) (rate(
+            http_server_request_duration_seconds_bucket{service_name="scheduler-api", http_route="/v1/schedule"}[10m]
+          )))
+          > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scheduling requests are slow: p95 {{ $value | humanizeDuration }}"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseschedulerslow
+
+      - alert: GridPulseSchedulerErrors
+        # 503s count: they're what a caller sees when forecasts are unavailable.
+        expr: >-
+          sum(rate(http_server_request_duration_seconds_count{service_name="scheduler-api", http_response_status_code=~"5.."}[10m]))
+            / sum(rate(http_server_request_duration_seconds_count{service_name="scheduler-api"}[10m]))
+          > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of scheduling API requests are failing"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseschedulererrors
+
+  - name: gridpulse-telemetry
+    rules:
+      - alert: GridPulseCollectorDown
+        # Without the collector every other alert goes quiet, so this one matters most.
+        expr: up{job=~"otel-collector.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus can't scrape the OpenTelemetry collector ({{ $labels.job }})"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulsecollectordown
+
+      - alert: GridPulseServiceSilent
+        # A service seen in the last 6 hours that sends nothing now: crashed, stuck, or cut off from the collector. Not
+        # while the collector itself is down, which GridPulseCollectorDown reports once instead of once per service.
+        expr: >-
+          group by (service_name) (max_over_time(gridpulse:service_reporting[6h]))
+            unless gridpulse:service_reporting
+            unless on () (up{job="otel-collector"} == 0)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service_name }} has stopped reporting"
+          runbook_url: https://github.com/cheazer/gridpulse/blob/main/docs/runbook.md#gridpulseservicesilent

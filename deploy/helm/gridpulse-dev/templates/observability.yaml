@@ -12,6 +12,8 @@ data:
     {{- include "dev.requiredFile" (dict "name" "observability.config.collector" "value" $o.config.collector) | nindent 4 }}
   prometheus.yml: |
     {{- include "dev.requiredFile" (dict "name" "observability.config.prometheus" "value" $o.config.prometheus) | nindent 4 }}
+  gridpulse-rules.yml: |
+    {{- include "dev.requiredFile" (dict "name" "observability.config.prometheusRules" "value" $o.config.prometheusRules) | nindent 4 }}
   tempo.yaml: |
     {{- include "dev.requiredFile" (dict "name" "observability.config.tempo" "value" $o.config.tempo) | nindent 4 }}
   datasources.yaml: |
@@ -27,7 +29,7 @@ data:
             "probe" (dict "path" "/" "port" "health") "data" "")
       (dict "name" "prometheus" "user" 65534 "values" $o.prometheus
             "args" (list "--config.file=/etc/prometheus/prometheus.yml" "--storage.tsdb.path=/prometheus" (printf "--storage.tsdb.retention.time=%s" $o.prometheus.retention))
-            "mounts" (list (dict "key" "prometheus.yml" "path" "/etc/prometheus/prometheus.yml"))
+            "mounts" (list (dict "key" "prometheus.yml" "path" "/etc/prometheus/prometheus.yml") (dict "key" "gridpulse-rules.yml" "path" "/etc/prometheus/rules/gridpulse.yml"))
             "ports" (list (dict "name" "http" "port" 9090)) "probe" (dict "path" "/-/ready" "port" "http") "data" "/prometheus")
       (dict "name" "tempo" "user" 10001 "values" $o.tempo
             "args" (list "-config.file=/etc/tempo/tempo.yaml") "mounts" (list (dict "key" "tempo.yaml" "path" "/etc/tempo/tempo.yaml"))

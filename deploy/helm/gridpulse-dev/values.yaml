@@ -47,6 +47,7 @@ observability:
   config:
     collector: ""
     prometheus: ""
+    prometheusRules: ""
     tempo: ""
     grafanaDatasources: ""
     grafanaDashboardProviders: ""
