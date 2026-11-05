@@ -3,10 +3,15 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phases 1 to 3 complete: live ingestion from three sources with two years of history; day-ahead
-> and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
-> champion/challenger gate; and a carbon-aware scheduling API and dashboard on top, tested end to end in CI.
-> In progress: Phase 4, Kubernetes and observability (telemetry in every service, the observability stack, the Helm charts with the whole system on kind, tested end to end in CI, alerts, and a load test, done). This README grows into the full write-up in Phase 5.
+> **Status:** Phases 1 to 4 complete:
+> - live ingestion from three sources, with two years of history;
+> - day-ahead and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
+>   champion/challenger gate;
+> - a carbon-aware scheduling API and dashboard on top;
+> - all of it observable (OpenTelemetry, Prometheus, Tempo and Grafana, with tested alert rules) and running on
+>   Kubernetes as well as Compose, with both tested end to end in CI from the same images.
+>
+> This README grows into the full write-up in Phase 5.
 
 ## Services at a glance
 
@@ -225,6 +230,12 @@ script brings up the whole system on a local [kind](https://kind.sigs.k8s.io/) c
 bash deploy/kind/up.sh
 ```
 
+It needs [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation),
+[kubectl](https://kubernetes.io/docs/tasks/tools/) and [Helm](https://helm.sh/docs/intro/install/) 3 besides
+Docker (tested with kind 0.31, kubectl 1.37 and Helm 3.19), and about 5 GB of memory. In a Codespace that's more than
+is free beside the Compose stack: run `docker compose stop` first (it keeps the data), and
+`kind delete cluster --name gridpulse` when done.
+
 CI runs the same script on every change (the `kind` workflow), then the same end-to-end test as on Compose. So the
 system is proven on both platforms, from the same images. The [charts' README](deploy/helm/README.md) explains the
 design.
@@ -287,7 +298,7 @@ and latency, the ingestion pipeline and scheduling, with recent traces](docs/ima
 
 ## Decisions
 
-Thirteen architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
+Fifteen architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
 
 - [0004](docs/adr/0004-event-identity-and-time.md): deterministic event IDs and UTC timestamps, so replays and
   backfills are idempotent.
@@ -301,3 +312,6 @@ Thirteen architecture decision records, indexed in [docs/adr](docs/adr/README.md
   API client, and NESO's regional forecasts read from the database as a second source that works without ours.
 - [0014](docs/adr/0014-observability.md): OpenTelemetry in every service, one collector, Prometheus and Tempo
   behind Grafana, and alerts on symptoms (stale forecasts, data that stopped arriving).
+- [0015](docs/adr/0015-kubernetes-packaging.md): two Helm charts (GridPulse's services, and the databases and
+  observability stack for development), set-up steps built into images and run as hook Jobs, and every pod under
+  the "restricted" Pod Security Standard.

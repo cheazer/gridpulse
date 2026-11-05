@@ -27,6 +27,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    # Like every long-running service: without it, a machine that sleeps and resumes (a Codespace overnight) comes
+    # back with the databases stopped and everything that needs them failing.
+    restart: unless-stopped
 
   # Creates the topics, then (schema-init) registers the event schemas. Both run the kafka-init image
   # (deploy/kafka-init), the same one the Kubernetes init Job runs.
@@ -65,6 +68,7 @@ services:
       SCHEMAREGISTRY_URLS: http://redpanda:8081
     ports:
       - "127.0.0.1:8080:8080"
+    restart: unless-stopped
 
   timescaledb:
     image: timescale/timescaledb:2.30.2-pg17
@@ -83,6 +87,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   # Applies db/migrations (ADR-0005). A one-shot job, so no service owns the schema. The image (db/Dockerfile) has the
   # migrations baked in; in Kubernetes the same image runs as a Helm hook Job before the apps start.
