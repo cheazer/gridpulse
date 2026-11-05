@@ -35,7 +35,7 @@ jobs:
       - name: Unit and integration tests (Testcontainers)
         run: uv run pytest
 
-  # The image the API and job run from, started through Compose against a freshly migrated database.
+  # The two images (API, and jobs), the API started through Compose against a freshly migrated database.
   image:
     runs-on: ubuntu-latest
     steps:
@@ -58,8 +58,13 @@ jobs:
           # A fresh database holds no forecasts: an empty, stale answer, not an error.
           curl -sf http://localhost:8000/v1/forecasts/demand | tee /tmp/demand.json
           python3 -c "import json; b = json.load(open('/tmp/demand.json')); assert b['half_hours'] == [] and b['stale']"
-          # The job's entry point is in the same image.
-          docker compose --profile jobs run --rm forecast-job python -m gridpulse_forecasting forecast --help
+          # The jobs image has the modelling stack and the job's entry point.
+          docker compose --profile jobs run --rm --no-deps forecast-job python -c "import lightgbm, mlflow, gridpulse_forecasting.training"
+          docker compose --profile jobs run --rm --no-deps forecast-job python -m gridpulse_forecasting forecast --help
+      - name: The API's image is the small one
+        run: |
+          docker image ls --format '{{.Repository}} {{.Size}}' | grep -E '^gridpulse-forecasting-(api|jobs) '
+          ! docker compose exec -T forecasting-api python -c "import lightgbm" 2>/dev/null
       - name: Runs as a non-root user
         run: test "$(docker compose exec -T forecasting-api id -u)" = "10001"
       - name: Logs on failure

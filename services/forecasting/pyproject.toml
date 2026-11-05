@@ -4,26 +4,32 @@ version = "0.1.0"
 description = "Demand and carbon-intensity forecasting for GridPulse (Phase 2, ADR-0011)"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
+# What the API needs. The jobs (forecast, train, backtest) also need the "jobs" group below: the API's image leaves
+# it out, which takes it from about 1 GB to a fraction of that.
 dependencies = [
     "fastapi>=0.115",
-    "holidays>=0.60",
-    "lightgbm>=4.7,<5",
-    # The MLflow client without the server's dependencies; same minor version as the server in Compose.
-    "mlflow-skinny>=3.17,<3.18",
     # Traces and metrics over OTLP/HTTP (step 4.1); the same protocol and port as every other service.
     "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
     "opentelemetry-instrumentation-fastapi>=0.66b0",
     "opentelemetry-instrumentation-psycopg>=0.66b0",
     "opentelemetry-sdk>=1.45,<2",
-    "pandas>=3.0",
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
-    "pyarrow>=18",
     "pydantic-settings>=2.6",
     "uvicorn>=0.30",
 ]
 
 [dependency-groups]
+# Modelling: features, LightGBM, the model registry. Installed by default (see tool.uv), so `uv sync`, the tests and
+# the jobs' image have it; only the API's image goes without.
+jobs = [
+    "holidays>=0.60",
+    "lightgbm>=4.7,<5",
+    # The MLflow client without the server's dependencies; same minor version as the server in Compose.
+    "mlflow-skinny>=3.17,<3.18",
+    "pandas>=3.0",
+    "pyarrow>=18",
+]
 dev = [
     "httpx2>=2.15",  # FastAPI's TestClient (Starlette has moved from httpx to httpx2)
     "mypy>=1.13",
@@ -32,6 +38,9 @@ dev = [
     "ruff>=0.8",
     "testcontainers[postgres]>=4.8",
 ]
+
+[tool.uv]
+default-groups = ["dev", "jobs"]
 
 [build-system]
 requires = ["hatchling"]

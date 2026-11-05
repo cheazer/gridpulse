@@ -112,6 +112,43 @@ class OpenMeteoMapperTest {
             });
   }
 
+  @ParameterizedTest
+  @CsvSource({"-1.0, 0.0", "-5.0, 0.0", "0.0, 0.0", "312.5, 312.5", "-5.1, -5.1", "-80.0, -80.0"})
+  void radiationJustBelowZeroIsStoredAsZeroButAMoreNegativeValueIsKeptForValidation(
+      double reported, double stored) {
+    assertThat(OpenMeteoMapper.radiation(reported)).isEqualTo(stored);
+  }
+
+  @Test
+  void aNightHourReportedAtMinusOneIsAValidEventWithZeroRadiation() {
+    long hour = Instant.parse("2026-10-20T20:00:00Z").getEpochSecond();
+    var hourly =
+        new Hourly(
+            List.of(hour),
+            List.of(9.5),
+            List.of(4.0),
+            List.of(7.0),
+            List.of(-1.0), // as seen in the weather dead-letter topic
+            List.of(80.0));
+
+    List<GridEvent> events =
+        mapper.reanalysis(
+            LOCATIONS.subList(0, 1), List.of(new LocationResponse(hourly)), POLLED_AT);
+
+    assertThat(events)
+        .singleElement()
+        .satisfies(
+            e -> {
+              assertThat(((Weather) e.payload()).shortwaveRadiationWm2()).isEqualTo(0.0);
+              assertThat(new EventValidator().validate(new EventCodec().toTree(e))).isEmpty();
+            });
+  }
+
+  @Test
+  void aNullRadiationStaysNull() {
+    assertThat(OpenMeteoMapper.radiation(null)).isNull();
+  }
+
   @Test
   void hoursWithNoValuesAreSkippedButPartialHoursAreKept() {
     long hour = Instant.parse("2026-10-20T00:00:00Z").getEpochSecond();

@@ -8,6 +8,13 @@ from __future__ import annotations
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Options for every session (libpq's `options`). Here rather than in db.py so the API can use them without importing
+# pandas: its image leaves out the jobs' dependencies.
+# search_path: queries name tables without the grid prefix, as in the migrations.
+# timezone=UTC: timestamptz values arrive as UTC datetimes, so pandas columns are UTC-aware datetimes.
+SESSION_OPTIONS = "-c search_path=grid -c timezone=UTC"
+READ_ONLY = " -c default_transaction_read_only=on"
+
 
 class DatabaseSettings(BaseSettings):
     """How to reach TimescaleDB as the forecasting service's own read-only login (ADR-0011).

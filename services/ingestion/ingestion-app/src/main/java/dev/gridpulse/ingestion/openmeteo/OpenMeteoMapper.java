@@ -26,6 +26,14 @@ public class OpenMeteoMapper {
 
   private static final Duration HOUR = Duration.ofHours(1);
 
+  /**
+   * Open-Meteo occasionally reports a night-time hour's shortwave radiation as slightly negative
+   * (always exactly -1 W/m² in a year of data): model noise around zero. Values down to this are
+   * stored as 0, which is what they mean; anything more negative is a broken value and is still
+   * dead-lettered by schema validation.
+   */
+  static final double RADIATION_NOISE_FLOOR_WM2 = -5.0;
+
   private final Duration revisionInterval;
 
   public OpenMeteoMapper(OpenMeteoProperties properties) {
@@ -86,7 +94,7 @@ public class OpenMeteoMapper {
                 hourly.temperature2m().get(h),
                 hourly.windSpeed10m().get(h),
                 hourly.windSpeed100m().get(h),
-                hourly.shortwaveRadiation().get(h),
+                radiation(hourly.shortwaveRadiation().get(h)),
                 hourly.cloudCover().get(h));
         if (isEmpty(weather)) {
           continue;
@@ -106,6 +114,14 @@ public class OpenMeteoMapper {
       }
     }
     return events;
+  }
+
+  static Double radiation(Double wm2) {
+    // Not a ternary: `cond ? 0.0 : wm2` unboxes wm2, and a missing (null) value would throw.
+    if (wm2 != null && wm2 < 0 && wm2 >= RADIATION_NOISE_FLOOR_WM2) {
+      return 0.0;
+    }
+    return wm2;
   }
 
   private static boolean isEmpty(Weather w) {

@@ -27,8 +27,7 @@ from psycopg_pool import ConnectionPool
 from pydantic import AwareDatetime, BaseModel, Field
 
 from gridpulse_forecasting import telemetry
-from gridpulse_forecasting.config import DatabaseSettings
-from gridpulse_forecasting.db import READ_ONLY, SESSION_OPTIONS
+from gridpulse_forecasting.config import READ_ONLY, SESSION_OPTIONS, DatabaseSettings
 
 DEFAULT_WINDOW = dt.timedelta(hours=48)
 MAX_WINDOW = dt.timedelta(days=7)
