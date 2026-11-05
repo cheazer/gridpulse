@@ -2,7 +2,8 @@ name: kind
 
 # The whole system on Kubernetes: deploy/kind/up.sh builds this commit's images, creates a kind cluster and installs
 # both Helm charts, under the "restricted" Pod Security Standard. Then the same end-to-end test as the Compose job
-# (tests/e2e/end_to_end.py) runs against it, through kubectl.
+# (tests/e2e/end_to_end.py) runs against it, through kubectl, followed by a short load test of the scheduling API
+# (loadtest/k6) against the data the test planted.
 on:
   push:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - "compose.yaml"
       - "observability/**"
       - "tests/e2e/**"
+      - "loadtest/**"
       - ".github/workflows/kind.yml"
   pull_request:
     paths: *paths
@@ -71,6 +73,14 @@ jobs:
         env:
           E2E_PLATFORM: kubernetes
         run: python3 tests/e2e/end_to_end.py
+      # Short and with a looser threshold than docs/results/load-test.md measured: a shared runner's timing varies,
+      # and this is to catch a regression (an error, or latency several times worse), not to benchmark.
+      - name: Load test
+        env:
+          RATE: "50"
+          DURATION: 1m
+          P95_MS: "200"
+        run: bash loadtest/k6/run-in-cluster.sh
       - name: Cluster state on failure
         if: failure()
         run: |

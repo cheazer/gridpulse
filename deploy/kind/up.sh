@@ -35,6 +35,16 @@ fi
 step "cluster"
 kind get clusters | grep -qx "$CLUSTER" || kind create cluster --name "$CLUSTER" --wait 120s
 
+step "metrics-server"
+# CPU and memory figures for `kubectl top` and the scheduling API's HorizontalPodAutoscaler. kind's kubelets have
+# self-signed certificates, hence --kubelet-insecure-tls: fine for a local cluster, never for a real one.
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.9.1/components.yaml >/dev/null
+kubectl --namespace kube-system get deployment metrics-server -o jsonpath='{.spec.template.spec.containers[0].args}' \
+  | grep -q kubelet-insecure-tls \
+  || kubectl --namespace kube-system patch deployment metrics-server --type=json \
+       -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' >/dev/null
+kubectl --namespace kube-system rollout status deployment/metrics-server --timeout=3m
+
 step "load images"
 for image in "${IMAGES[@]}"; do
   docker tag "gridpulse-$image:latest" "gridpulse-$image:$TAG"
