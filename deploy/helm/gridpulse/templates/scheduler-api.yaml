@@ -77,9 +77,9 @@ spec:
           type: Utilization
           averageUtilization: {{ $v.autoscaling.targetCPUUtilizationPercentage }}
   behavior:
-    # A new pod's first requests spike its CPU while .NET compiles the hot paths (measured at 112-180% of request for
-    # under a minute), and by default the autoscaler adds pods at once, each of which then spikes the same way. Only
-    # scale up on load that lasts a minute.
+    # A new pod's first requests spike its CPU while .NET compiles the hot paths (2 to 3 times its request for about
+    # 30 s, docs/results/load-test.md), and by default the autoscaler adds pods at once, each of which then spikes the
+    # same way. Only scale up on load that lasts a minute.
     scaleUp:
       stabilizationWindowSeconds: 60
 {{- end }}
