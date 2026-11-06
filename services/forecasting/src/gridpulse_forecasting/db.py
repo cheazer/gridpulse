@@ -14,12 +14,7 @@ import pandas as pd
 import psycopg
 from psycopg import sql
 
-from gridpulse_forecasting.config import DatabaseSettings
-
-# search_path: queries name tables without the grid prefix, as in the migrations.
-# timezone=UTC: timestamptz values arrive as UTC datetimes, so pandas columns are UTC-aware datetimes.
-SESSION_OPTIONS = "-c search_path=grid -c timezone=UTC"
-READ_ONLY = " -c default_transaction_read_only=on"
+from gridpulse_forecasting.config import READ_ONLY, SESSION_OPTIONS, DatabaseSettings
 
 TIMESTAMPTZ_OID = psycopg.adapters.types["timestamptz"].oid
 

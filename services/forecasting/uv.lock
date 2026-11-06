@@ -352,17 +352,12 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "holidays" },
-    { name = "lightgbm" },
-    { name = "mlflow-skinny" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-psycopg" },
     { name = "opentelemetry-sdk" },
-    { name = "pandas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
-    { name = "pyarrow" },
     { name = "pydantic-settings" },
     { name = "uvicorn" },
 ]
@@ -376,21 +371,23 @@ dev = [
     { name = "ruff" },
     { name = "testcontainers" },
 ]
+jobs = [
+    { name = "holidays" },
+    { name = "lightgbm" },
+    { name = "mlflow-skinny" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "holidays", specifier = ">=0.60" },
-    { name = "lightgbm", specifier = ">=4.7,<5" },
-    { name = "mlflow-skinny", specifier = ">=3.17,<3.18" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.45,<2" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.66b0" },
     { name = "opentelemetry-instrumentation-psycopg", specifier = ">=0.66b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.45,<2" },
-    { name = "pandas", specifier = ">=3.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "psycopg-pool", specifier = ">=3.2" },
-    { name = "pyarrow", specifier = ">=18" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
@@ -403,6 +400,13 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "testcontainers", extras = ["postgres"], specifier = ">=4.8" },
+]
+jobs = [
+    { name = "holidays", specifier = ">=0.60" },
+    { name = "lightgbm", specifier = ">=4.7,<5" },
+    { name = "mlflow-skinny", specifier = ">=3.17,<3.18" },
+    { name = "pandas", specifier = ">=3.0" },
+    { name = "pyarrow", specifier = ">=18" },
 ]
 
 [[package]]

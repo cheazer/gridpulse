@@ -35,11 +35,13 @@ services:
 
   # Serves stored forecasts (step 2.6b) as the read-only 'forecasting' login. Docs at http://localhost:8000/docs.
   forecasting-api:
-    build: &forecasting-build
+    build:
       context: ../..
       dockerfile: services/forecasting/Dockerfile
+      target: api # without the modelling stack the API never uses
       args:
         GRIDPULSE_VERSION: ${GRIDPULSE_VERSION:-dev}
+    image: gridpulse-forecasting-api
     depends_on:
       db-users:
         condition: service_completed_successfully
@@ -61,10 +63,16 @@ services:
   # Loads each task's champion from the MLflow registry, forecasts the next 48 hours and stores it, as the
   # 'forecast_job' login. Seconds, not minutes: training is the separate train-job. Not started by
   # `docker compose up`; run it with  docker compose --profile jobs run --rm forecast-job
-  # Phase 4 schedules both as Kubernetes CronJobs (forecasts often, training weekly).
+  # On Kubernetes both are CronJobs (forecasts every 6 hours, training weekly).
   forecast-job:
     profiles: [jobs]
-    build: *forecasting-build
+    build: &jobs-build
+      context: ../..
+      dockerfile: services/forecasting/Dockerfile
+      target: jobs
+      args:
+        GRIDPULSE_VERSION: ${GRIDPULSE_VERSION:-dev}
+    image: gridpulse-forecasting-jobs
     command: ["python", "-m", "gridpulse_forecasting", "forecast", "--task", "all"]
     depends_on:
       db-users:
@@ -84,7 +92,8 @@ services:
   # 'forecasting' login: training only reads.  docker compose --profile jobs run --rm train-job
   train-job:
     profiles: [jobs]
-    build: *forecasting-build
+    build: *jobs-build
+    image: gridpulse-forecasting-jobs
     command: ["python", "-m", "gridpulse_forecasting", "train", "--task", "all"]
     depends_on:
       db-users:

@@ -15,8 +15,9 @@ CLUSTER=${CLUSTER:-gridpulse}
 NAMESPACE=${NAMESPACE:-gridpulse}
 TAG=${TAG:-dev}
 # Compose builds every image; these are the services that build them, and the images they produce.
-SERVICES=(ingestion-app timescale-sink forecasting-api scheduler-api scheduler-dashboard migrate redpanda-init mlflow)
-IMAGES=(ingestion-app timescale-sink forecasting-api scheduler-api scheduler-dashboard db kafka-init mlflow)
+SERVICES=(ingestion-app timescale-sink forecasting-api forecast-job scheduler-api scheduler-dashboard migrate redpanda-init
+          mlflow)
+IMAGES=(ingestion-app timescale-sink forecasting-api forecasting-jobs scheduler-api scheduler-dashboard db kafka-init mlflow)
 
 step() { printf '\n--- %s\n' "$*"; }
 

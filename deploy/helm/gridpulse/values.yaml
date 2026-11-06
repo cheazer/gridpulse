@@ -79,16 +79,16 @@ schedulerDashboard:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 256Mi }
 
-# CronJobs from the forecasting image (ADR-0011). Times are UTC.
+# CronJobs from the forecasting jobs image (ADR-0011): the API's image leaves out LightGBM and MLflow. Times are UTC.
 forecastJob:
-  repository: gridpulse-forecasting-api
+  repository: gridpulse-forecasting-jobs
   schedule: "5 */6 * * *" # every 6 hours: gridpulse.forecast.age alerts after 7
   resources:
     requests: { cpu: 250m, memory: 512Mi }
     limits: { memory: 1Gi }
 
 trainJob:
-  repository: gridpulse-forecasting-api
+  repository: gridpulse-forecasting-jobs
   schedule: "30 2 * * 1" # Mondays: a week of new data per retrain
   resources:
     requests: { cpu: 500m, memory: 1Gi }

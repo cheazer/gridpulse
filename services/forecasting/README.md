@@ -209,11 +209,17 @@ curl "http://localhost:8000/v1/forecasts/carbon?from=2026-10-31T00:00Z&to=2026-1
   stays fast and every caller sees the same numbers.
 - **Read-only twice over:** it connects as the `forecasting` login (`grid_reader`), and every pooled session starts
   read-only.
-- **One image** for the API and the job ([Dockerfile](Dockerfile)): multi-stage, dependencies installed from
-  `uv.lock` only (`uv sync --locked`), a non-root user, and the git commit baked in as `GRIDPULSE_VERSION`, which
-  every stored forecast records. It's 1 GB, mostly LightGBM, SciPy and pandas. An API-only image without the
-  training stack would be much smaller; it isn't built yet.
-- CI builds the image, starts the API through Compose against a freshly migrated database, and smoke-tests it.
+- **Two images from one [Dockerfile](Dockerfile).** Both are multi-stage, install dependencies from `uv.lock` only
+  (`uv sync --locked`), run as a non-root user, and have the git commit baked in as `GRIDPULSE_VERSION`, which every
+  stored forecast records.
+  - `api` (252 MB): only what serving needs.
+  - `jobs` (1 GB, mostly LightGBM, SciPy and pandas): the forecast and train jobs.
+
+  The modelling libraries are the `jobs` dependency group in [pyproject.toml](pyproject.toml). It's installed by
+  default, so `uv sync` and the tests are unchanged, and only the API's image leaves it out. A test checks that
+  importing the API loads none of them.
+- CI builds both images, starts the API through Compose against a freshly migrated database and smoke-tests it, and
+  checks the jobs image can import its modelling stack and the API's can't.
 
 ## Telemetry
 
