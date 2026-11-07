@@ -3,15 +3,62 @@
 Real-time UK grid intelligence: ingest live grid data, forecast demand and carbon intensity 24–48 h ahead,
 and expose a carbon-aware scheduling API that finds the lowest-carbon window for energy-heavy workloads.
 
-> **Status:** Phases 1 to 4 complete:
+> **Status:** complete (all five phases):
 > - live ingestion from three sources, with two years of history;
 > - day-ahead and 48-hour forecasts of demand and carbon intensity, backtested against NESO and retrained behind a
->   champion/challenger gate;
+>   champion/challenger gate, plus model studies on what would improve them;
 > - a carbon-aware scheduling API and dashboard on top;
 > - all of it observable (OpenTelemetry, Prometheus, Tempo and Grafana, with tested alert rules) and running on
 >   Kubernetes as well as Compose, with both tested end to end in CI from the same images.
->
-> This README grows into the full write-up in Phase 5.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    subgraph sources["Public data"]
+        CI["Carbon Intensity API"]
+        EX["Elexon BMRS"]
+        OM["Open-Meteo"]
+    end
+    subgraph ingest["Ingestion · Java 21, Spring Boot"]
+        IA["ingestion-app<br/>pollers and backfill"]
+        SK["timescale-sink"]
+    end
+    RP[("Redpanda<br/>Kafka API, schema registry")]
+    TS[("TimescaleDB")]
+    subgraph ml["Forecasting · Python"]
+        FJ["forecast and train jobs<br/>LightGBM + conformal intervals"]
+        MF["MLflow<br/>model registry"]
+        FA["forecasting API<br/>FastAPI"]
+    end
+    subgraph sched["Scheduling · .NET 10"]
+        SA["scheduling API"]
+        DB["Blazor dashboard"]
+    end
+    OT["OpenTelemetry collector<br/>Prometheus · Tempo · Grafana"]
+
+    CI & EX & OM --> IA -->|"JSON events, schema-checked"| RP --> SK --> TS
+    TS --> FJ <--> MF
+    FJ -->|"48-hour forecasts"| TS --> FA --> SA --> DB
+    TS -->|"NESO's regional forecasts"| SA
+    ingest & ml & sched -.->|"traces, metrics"| OT
+```
+
+Every arrow is tested end to end in CI, on Docker Compose and on Kubernetes, from the same images.
+
+## What this demonstrates
+
+- **Data engineering:** event streaming with schema contracts, idempotent ingestion and resumable backfills, and a
+  time-series store with continuous aggregates.
+- **Honest forecasting:** features built strictly as of the issue time (with tests that prove it), rolling-origin
+  backtests against the grid operator's own forecast, calibrated 80% intervals, and model studies that report what
+  didn't work as plainly as what did.
+- **MLOps:** a model registry with a champion/challenger gate, scheduled retraining, and forecasts served from a table.
+- **Backend services in three languages:** Java/Spring Boot, Python/FastAPI and C#/.NET, each with its own tests,
+  CI and container image.
+- **Operations:** OpenTelemetry tracing across all three, symptom-based alerts with unit tests, Helm charts under the
+  "restricted" Pod Security Standard, autoscaling sized by a load test, and sixteen architecture decision
+  records.
 
 ## Services at a glance
 
@@ -162,13 +209,24 @@ period, so a ceiling rather than a like-for-like comparison.
   separate validation window (per-location solar, a ratio target, week-on-week features, hyperparameters) found
   nothing better, and the test months were scored only once
   ([experiments](docs/results/demand-model-experiments.md)). The gap is largest at midday, when embedded solar cuts
-  demand; NESO forecasts it directly. More history and a "NESO + correction" model are Phase 5 work.
+  demand; NESO forecasts it directly.
 - **The intervals are honest.** Plain quantile models covered only 48% of actuals out of sample; conformalised
   quantile regression brings the P10-P90 band to about 80%.
 - **What is served** is a rolling model covering every lead time from 0 to 48 hours. It scores about the same
   (demand 4.37%, carbon 23.6 g/kWh: [demand](docs/results/forecast-accuracy-rolling.md),
-  [carbon](docs/results/carbon-accuracy-rolling.md)). Demand error doesn't fall at short leads yet, a known
-  limitation.
+  [carbon](docs/results/carbon-accuracy-rolling.md)).
+
+### What would close the gap: four model studies
+
+Each uses the same backtest as above ([report](docs/results/model-studies.md),
+[ADR-0016](docs/adr/0016-model-studies.md)):
+
+| Study | Result |
+|---|---|
+| **More training history** | Demand improves steadily: 5.91% MAPE with 3 months of history, 4.53% with 18, still improving. But the archived weather forecasts the model needs only start in 2024, so more history has to accumulate live. Training on actual weather instead would be leakage. |
+| **A short-range input** (latest demand against a week ago) | Only a slight gain, and only where it should be: 2.8% lower error at 0–6 hours ahead. Not worth a new champion. |
+| **NESO + correction**: NESO's forecast as an input, learning its errors | **2.73% MAPE, beating NESO's own 2.85%.** Labelled separately: it improves NESO's forecast rather than replacing it. |
+| **A neural network** on the same features | Worse than LightGBM: 4.77% against 4.24% for demand, 26.6% against 22.0% for carbon. Trees stay. |
 
 ### Running the forecasts
 
@@ -298,7 +356,7 @@ and latency, the ingestion pipeline and scheduling, with recent traces](docs/ima
 
 ## Decisions
 
-Fifteen architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
+Sixteen architecture decision records, indexed in [docs/adr](docs/adr/README.md). The ones that shape the results:
 
 - [0004](docs/adr/0004-event-identity-and-time.md): deterministic event IDs and UTC timestamps, so replays and
   backfills are idempotent.
@@ -315,3 +373,5 @@ Fifteen architecture decision records, indexed in [docs/adr](docs/adr/README.md)
 - [0015](docs/adr/0015-kubernetes-packaging.md): two Helm charts (GridPulse's services, and the databases and
   observability stack for development), set-up steps built into images and run as hook Jobs, and every pod under
   the "restricted" Pod Security Standard.
+- [0016](docs/adr/0016-model-studies.md): the model studies: why there's no extra backfill (the weather-forecast
+  archive starts in 2024), NESO + correction beating NESO, and gradient-boosted trees beating a neural network.

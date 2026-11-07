@@ -22,3 +22,4 @@ Format: [Michael Nygard's template](https://cognitect.com/blog/2011/11/15/docume
 | [0013](0013-scheduler-design.md) | Scheduler design: .NET Minimal APIs, forecasts over HTTP, a separate Blazor dashboard | Accepted |
 | [0014](0014-observability.md) | Observability: OpenTelemetry everywhere, one collector, Prometheus, Tempo and Grafana | Accepted |
 | [0015](0015-kubernetes-packaging.md) | Kubernetes packaging: two Helm charts, init images, and the databases in the cluster for development | Accepted |
+| [0016](0016-model-studies.md) | Model studies: what Phase 5 tried (more history, a short-range input, NESO + correction, a neural network), and what it changed | Accepted |

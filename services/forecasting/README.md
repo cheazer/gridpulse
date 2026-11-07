@@ -110,8 +110,13 @@ radiation, and leans mostly on past demand.
 Ten variants were compared on a validation window (Jul to Sep 2025) before the test months, so the test months were
 scored only once: per-location solar, a ratio-to-last-week target, week-on-week changes in demand and weather, and
 four hyperparameter settings. None beat the first model by more than noise, so it stays. Run them with
-`compare-variants`; each is logged to MLflow with `stage=validation`. More history and a "NESO + correction" model
-are left for Phase 5.
+`compare-variants`; each is logged to MLflow with `stage=validation`.
+
+Phase 5's four model studies (a learning curve, a short-range input, a "NESO + correction" model and a neural
+network) run with `studies` ([studies.py](src/gridpulse_forecasting/studies.py)). It writes
+[docs/results/model-studies.md](../../docs/results/model-studies.md); `--cache DIR` keeps the built examples for a
+re-run, and `--only` picks studies. The decisions they led to are in ADR-0016. NESO + correction beats NESO (2.73%
+against 2.85% MAPE), and LightGBM beats the neural network.
 
 ## The carbon-intensity model
 

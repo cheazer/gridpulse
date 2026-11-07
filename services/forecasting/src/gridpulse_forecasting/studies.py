@@ -146,7 +146,7 @@ def neural(task: Task, examples: pd.DataFrame, benchmark: pd.Series, months: int
 
 def folds_of(comparison: Comparison) -> str:
     folds = sorted(next(iter(comparison.results.values())).predictions["fold"].unique())
-    return f"{folds[0]} to {folds[-1]} ({len(folds)} months)"
+    return f"{folds[0]} to {folds[-1]}, {len(folds)} months"
 
 
 def summary_table(comparison: Comparison, unit: str, decimals: int) -> str:
