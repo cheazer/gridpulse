@@ -66,6 +66,27 @@ def test_training_only_uses_actuals_published_by_the_refit_time() -> None:
     assert train["target_time"].max() == pd.Timestamp("2025-02-28T11:30Z")
 
 
+def test_a_training_window_keeps_only_that_much_recent_history() -> None:
+    frame = examples()
+    refit_time = pd.Timestamp("2025-02-28T13:00Z")
+
+    train = training_rows(frame, refit_time, window=pd.Timedelta(days=30))
+
+    assert train["target_time"].min() >= refit_time - pd.Timedelta(days=30)
+    assert train["target_time"].max() == pd.Timestamp("2025-02-28T11:30Z")  # publication still applies
+
+
+def test_extra_example_columns_reach_the_model_only_when_asked_for() -> None:
+    frame = examples().assign(neso_day_ahead_mw=1.0)
+
+    run_backtest(Spy, frame, pd.Series(25_000.0, index=frame["target_time"]), months=1)
+    assert "neso_day_ahead_mw" not in Spy.fits[-1].columns
+    run_backtest(
+        Spy, frame, pd.Series(25_000.0, index=frame["target_time"]), months=1, extra_features=["neso_day_ahead_mw"]
+    )
+    assert "neso_day_ahead_mw" in Spy.fits[-1].columns
+
+
 def test_each_month_refits_a_fresh_model_on_what_was_known_then() -> None:
     frame = examples()
     neso = frame.set_index("target_time")["target"] * 1.02

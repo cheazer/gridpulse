@@ -30,6 +30,10 @@ jobs = [
     "pandas>=3.0",
     "pyarrow>=18",
 ]
+# Only the model studies use these (studies.py, step 5); neither image installs them.
+experiments = [
+    "scikit-learn>=1.5",
+]
 dev = [
     "httpx2>=2.15",  # FastAPI's TestClient (Starlette has moved from httpx to httpx2)
     "mypy>=1.13",
@@ -40,7 +44,7 @@ dev = [
 ]
 
 [tool.uv]
-default-groups = ["dev", "jobs"]
+default-groups = ["dev", "experiments", "jobs"]
 
 [build-system]
 requires = ["hatchling"]
@@ -66,7 +70,7 @@ packages = ["gridpulse_forecasting"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["testcontainers.*", "pyarrow.*", "mlflow.*", "lightgbm.*"]
+module = ["testcontainers.*", "pyarrow.*", "mlflow.*", "lightgbm.*", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

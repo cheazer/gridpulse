@@ -4,9 +4,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gridpulse_forecasting.features import FEATURES
+from gridpulse_forecasting.features import BASE_FEATURES, FEATURES
 from gridpulse_forecasting.metrics import interval_coverage, point_metrics
-from gridpulse_forecasting.models import ConformalisedLightGBM, LightGBMQuantiles, SeasonalNaive, conformal_margin
+from gridpulse_forecasting.models import (
+    NESO_FEATURE,
+    ConformalisedLightGBM,
+    LightGBMMedian,
+    LightGBMQuantiles,
+    ModelConfig,
+    NeuralNetwork,
+    SeasonalNaive,
+    conformal_margin,
+)
 
 
 def synthetic(rows: int, seed: int) -> tuple[pd.DataFrame, pd.Series]:
@@ -117,3 +126,42 @@ def test_feature_importance_names_what_drives_the_forecast(fitted: LightGBMQuant
 def test_predicting_before_fitting_is_an_error() -> None:
     with pytest.raises(RuntimeError, match="fit the model"):
         LightGBMQuantiles().predict(synthetic(5, seed=7)[0])
+    with pytest.raises(RuntimeError, match="fit the model"):
+        NeuralNetwork().predict(synthetic(5, seed=7)[0])
+
+
+def test_the_median_model_predicts_p50_only() -> None:
+    model = LightGBMMedian()
+    model.fit(*synthetic(2_000, seed=3))
+
+    assert list(model.predict(synthetic(10, seed=4)[0]).columns) == ["p50"]
+
+
+def with_neso(rows: int, seed: int, neso_error: float) -> tuple[pd.DataFrame, pd.Series]:
+    """Synthetic demand plus a NESO forecast that is off by ``neso_error`` MW, always the same way."""
+    features, demand = synthetic(rows, seed)
+    features[NESO_FEATURE] = demand - neso_error
+    return features, demand
+
+
+def test_residual_to_neso_learns_neso_s_error_and_adds_it_back() -> None:
+    config = ModelConfig(features=(*BASE_FEATURES, NESO_FEATURE), target="residual_to_neso")
+    model = LightGBMMedian(config)
+    model.fit(*with_neso(4_000, seed=5, neso_error=800))
+    features, demand = with_neso(1_000, seed=6, neso_error=800)
+
+    corrected = point_metrics(demand, model.predict(features)["p50"])["mae"]
+    neso_alone = point_metrics(demand, features[NESO_FEATURE])["mae"]
+    assert neso_alone == pytest.approx(800)
+    assert corrected < 0.2 * neso_alone  # the bias is learned and removed
+
+
+def test_the_neural_network_learns_the_signal_better_than_seasonal_naive() -> None:
+    model = NeuralNetwork()
+    model.fit(*synthetic(6_000, seed=8))
+    features, demand = synthetic(2_000, seed=9)
+    features.loc[features.index[:50], "temperature_c"] = np.nan  # missing inputs are filled, not fatal
+
+    neural = point_metrics(demand, model.predict(features)["p50"])["mae"]
+    naive = point_metrics(demand, SeasonalNaive().predict(features)["p50"])["mae"]
+    assert neural < 0.5 * naive

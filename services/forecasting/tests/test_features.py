@@ -180,6 +180,17 @@ def test_demand_change_compares_the_last_24h_with_the_same_hours_a_week_before(e
     assert examples["demand_change_24h_pct"].iloc[0] == pytest.approx(expected)
 
 
+def test_latest_demand_is_compared_with_the_same_instant_a_week_before(examples: pd.DataFrame) -> None:
+    # Synthetic demand rises 1 MW per half-hour: a week earlier is 336 half-hours, so 336 MW, lower.
+    latest = examples["demand_latest"].iloc[0]
+
+    expected = (latest / (latest - 336) - 1) * 100
+    assert examples["demand_latest_vs_last_week_pct"].iloc[0] == pytest.approx(expected)
+    # One value per issue time, like demand_latest: it describes what was known then, not the target hour.
+    values = examples["demand_latest_vs_last_week_pct"]
+    assert (values == values.iloc[0]).all()
+
+
 def test_weather_change_compares_with_last_weeks_weather_as_finally_forecast(examples: pd.DataFrame) -> None:
     # Last week's hours were long past at the cut-off, so their latest revision is the 24 h one (12.4 C). This
     # week's evening only has the 48 h revision (14.8 C) by the cut-off; its afternoon has the 24 h one.

@@ -7,7 +7,7 @@ have run live, so the error is what it would have been live (ADR-0011).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import pandas as pd
@@ -66,9 +66,14 @@ def uk_month(times: pd.Series) -> pd.Series:
     return months
 
 
-def training_rows(examples: pd.DataFrame, refit_time: pd.Timestamp) -> pd.DataFrame:
-    """Examples whose actual had been published by ``refit_time``: the model can't learn from the future either."""
+def training_rows(examples: pd.DataFrame, refit_time: pd.Timestamp, window: pd.Timedelta | None = None) -> pd.DataFrame:
+    """Examples whose actual had been published by ``refit_time``: the model can't learn from the future either.
+
+    ``window`` keeps only the most recent stretch of them, e.g. 6 months: the learning curve's lever (step 5.2).
+    """
     published = examples["target_time"] + HALF_HOUR + INDO_PUBLICATION_LAG <= refit_time
+    if window is not None:
+        published &= examples["target_time"] >= refit_time - window
     return examples[published & examples["target"].notna()]
 
 
@@ -78,8 +83,15 @@ def run_backtest(
     neso: pd.Series,
     months: int = 12,
     naive_feature: str = "demand_lag_7d",
+    train_window: pd.Timedelta | None = None,
+    extra_features: Sequence[str] = (),
 ) -> BacktestResult:
-    """Backtest a fresh model per month over the last ``months`` complete months of ``examples``."""
+    """Backtest a fresh model per month over the last ``months`` complete months of ``examples``.
+
+    ``train_window`` limits each refit to that much recent history; ``extra_features`` are example columns beyond
+    FEATURES that a model may use (NESO's own forecast, for the NESO + correction model).
+    """
+    columns = [*FEATURES, *extra_features]
     folds = []
     model: Forecaster | None = None
     local_month = uk_month(examples["target_time"])
@@ -87,9 +99,9 @@ def run_backtest(
         test = examples[(local_month == month) & examples["target"].notna()]
         refit_time = test["issue_time"].min()
         model = new_model()
-        train = training_rows(examples, refit_time)
-        model.fit(train[FEATURES], train["target"])
-        forecast = model.predict(test[FEATURES]).add_prefix(f"{MODEL}_")
+        train = training_rows(examples, refit_time, train_window)
+        model.fit(train[columns], train["target"])
+        forecast = model.predict(test[columns]).add_prefix(f"{MODEL}_")
         folds.append(
             pd.concat(
                 [
