@@ -28,7 +28,7 @@ from gridpulse_forecasting.config import DatabaseSettings, JobDatabaseSettings
 from gridpulse_forecasting.dataset import build_day_ahead, build_rolling, rolling_issue_times
 from gridpulse_forecasting.db import Database
 from gridpulse_forecasting.experiments import VALIDATION_LAST_DAY, VALIDATION_MONTHS, variant_models
-from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON
+from gridpulse_forecasting.features import FEATURES, LAG_DAYS, LONDON, SHORT_RANGE
 from gridpulse_forecasting.report import accuracy_report
 from gridpulse_forecasting.sources import load_sources
 from gridpulse_forecasting.tasks import DEMAND, TASKS, Task
@@ -148,6 +148,105 @@ def compare_variants(first: dt.date, only: list[str] | None) -> int:
     print()
     print(f"Validation window {months}:")
     print(pd.DataFrame(rows).T.round(2).to_string())
+    return 0
+
+
+SHORT_RANGE_NAME = SHORT_RANGE[0]
+STUDY_NAMES = ("learning-curve", "short-range", "neso-correction", "neural")
+
+
+def run_studies(only: list[str] | None, report_path: str, cache: str | None) -> int:
+    """Phase 5's model studies (studies.py): build each set of examples once, run the studies, write one report."""
+    from gridpulse_forecasting import studies
+    from gridpulse_forecasting.tasks import CARBON
+
+    wanted = set(only or STUDY_NAMES)
+    db = Database(DatabaseSettings())
+    yesterday = pd.Timestamp.now(tz=LONDON).date() - dt.timedelta(days=1)
+
+    def examples(name: str, task: Task, last: dt.date, mode: str = "day-ahead") -> pd.DataFrame:
+        path = Path(cache) / f"{name}.parquet" if cache else None
+        if path and path.exists():
+            return pd.read_parquet(path)
+        frame = load_examples(db, task, FIRST_DAY, last, mode)
+        if path:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            frame.to_parquet(path, index=False)
+        print(f"built {len(frame):,} {name} examples", flush=True)
+        return frame
+
+    def benchmark(task: Task, last: dt.date) -> pd.Series:
+        return task.load_benchmark(db, *input_window(FIRST_DAY, last))
+
+    sections = []
+    if wanted & {"learning-curve", "neso-correction", "neural"}:
+        demand = examples("demand-day-ahead", DEMAND, yesterday)
+        neso = benchmark(DEMAND, yesterday)
+    if wanted & {"learning-curve", "neural"}:
+        carbon = examples("carbon-day-ahead", CARBON, yesterday)
+        neso_carbon = benchmark(CARBON, yesterday)
+    if "learning-curve" in wanted:
+        text = []
+        for task, frame, bench, decimals in ((DEMAND, demand, neso, 0), (CARBON, carbon, neso_carbon, 1)):
+            curve = studies.learning_curve(task, frame, bench)
+            print(f"learning curve, {task.name}:\n{curve.summary().round(2).to_string()}", flush=True)
+            text.append(
+                f"### {task.name.capitalize()} ({studies.folds_of(curve)})\n\n"
+                + studies.summary_table(curve, task.unit, decimals)
+            )
+        sections.append(
+            (
+                "1. Learning curve: accuracy against months of training history",
+                "The same day-ahead model and test months, refitted each month on only the most recent 3 to 18 months "
+                "of history (18 is the most every test month has behind it).\n\n" + "\n\n".join(text),
+            )
+        )
+    if "short-range" in wanted:
+        last = dt.date.fromisoformat(VALIDATION_LAST_DAY)
+        rolling = examples("demand-rolling-validation", DEMAND, last, mode="rolling")
+        comparison = studies.short_range(rolling, benchmark(DEMAND, last), VALIDATION_MONTHS)
+        print(f"short range:\n{studies.by_lead(comparison).round(0).to_string()}", flush=True)
+        sections.append(
+            (
+                "2. Short range: the latest demand against a week ago",
+                f"The rolling model (every lead from 0 to 48 hours), with and without `{SHORT_RANGE_NAME}`, on the "
+                f"validation months ({studies.folds_of(comparison)}): this chooses a design, so not the test months."
+                "\n\n"
+                + studies.lead_table(comparison, DEMAND.unit)
+                + "\n\nOver all leads:\n\n"
+                + studies.summary_table(comparison, DEMAND.unit, 0),
+            )
+        )
+    if "neso-correction" in wanted:
+        comparison = studies.neso_correction(demand, neso)
+        print(f"NESO + correction:\n{comparison.summary().round(2).to_string()}", flush=True)
+        sections.append(
+            (
+                "3. NESO + correction",
+                "A separately labelled model that takes NESO's day-ahead forecast (as published by 13:00 the day "
+                "before) as an input and learns its error, against GridPulse's own model, which never sees NESO's "
+                f"forecast. Day-ahead demand, test months {studies.folds_of(comparison)}.\n\n"
+                + studies.summary_table(comparison, DEMAND.unit, 0),
+            )
+        )
+    if "neural" in wanted:
+        text = []
+        for task, frame, bench, decimals in ((DEMAND, demand, neso, 0), (CARBON, carbon, neso_carbon, 1)):
+            comparison = studies.neural(task, frame, bench)
+            print(f"neural network, {task.name}:\n{comparison.summary().round(2).to_string()}", flush=True)
+            text.append(
+                f"### {task.name.capitalize()} ({studies.folds_of(comparison)})\n\n"
+                + studies.summary_table(comparison, task.unit, decimals)
+            )
+        sections.append(
+            (
+                "4. Neural network against gradient-boosted trees",
+                "A two-layer neural network (128 and 64 units, scikit-learn's MLP with early stopping) on exactly the "
+                "same features, examples and monthly refits as LightGBM.\n\n" + "\n\n".join(text),
+            )
+        )
+    Path(report_path).write_text(studies.report(sections, pd.Timestamp.now(tz=LONDON).date()), encoding="utf-8")
+    print(f"Wrote {report_path}")
     return 0
 
 
@@ -299,6 +398,10 @@ def main(argv: list[str] | None = None) -> int:
         default="auto",
         help="auto: only if the gate passes; always: override the gate (say why in the commit); never: register only",
     )
+    st = commands.add_parser("studies", help="Phase 5's model studies (studies.py), into one Markdown report")
+    st.add_argument("--only", nargs="+", choices=STUDY_NAMES, help="run just these studies")
+    st.add_argument("--report", default="../../docs/results/model-studies.md", help="where to write the report")
+    st.add_argument("--cache", help="a folder to keep built examples in, so a re-run skips building them")
     pr = commands.add_parser("promote", help="make a registered version champion despite its gate, with a reason")
     pr.add_argument("--task", choices=sorted(TASKS), required=True)
     pr.add_argument("--version", required=True, help="the registry version, e.g. 1")
@@ -319,6 +422,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_promote(args.task, args.version, args.reason)
     if args.command == "train":
         return run_train(sorted(TASKS) if args.task == "all" else [args.task], args.first, args.promote)
+    if args.command == "studies":
+        return run_studies(args.only, args.report, args.cache)
     if args.command == "compare-variants":
         return compare_variants(args.first, args.only)
     if args.command == "backtest":

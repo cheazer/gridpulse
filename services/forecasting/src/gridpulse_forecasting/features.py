@@ -67,6 +67,11 @@ REGIONAL_SOLAR = [f"solar_radiation_{location}_wm2" for location in POPULATION_W
 # forecast weather against the weather at the same UK clock time a week before.
 WEEK_ON_WEEK = ["demand_change_24h_pct", "temperature_change_7d_c", "solar_radiation_change_7d_wm2"]
 
+# Step 5.3: how the latest published half-hour compares with the same instant a week before. With lead_hours the
+# trees can learn that a deviation seen now carries into the next few hours and fades by tomorrow: the rolling model's
+# error was flat from 2 to 40 hours ahead, so it wasn't using fresh data at short range.
+SHORT_RANGE = ["demand_latest_vs_last_week_pct"]
+
 # Everything the dataset builds; each model chooses its subset (models.ModelConfig).
 # Carbon intensity's own recent past, for the carbon model (step 2.5).
 CARBON_HISTORY = [*(f"carbon_lag_{days}d" for days in LAG_DAYS), "carbon_latest", "carbon_mean_24h"]
@@ -75,7 +80,7 @@ CARBON_HISTORY = [*(f"carbon_lag_{days}d" for days in LAG_DAYS), "carbon_latest"
 # plus carbon intensity's own history. One configuration, set before its backtest and not tuned on it.
 CARBON_FEATURES = [*BASE_FEATURES, *CARBON_HISTORY]
 
-FEATURES = [*BASE_FEATURES, *REGIONAL_SOLAR, *WEEK_ON_WEEK, *CARBON_HISTORY]
+FEATURES = [*BASE_FEATURES, *REGIONAL_SOLAR, *WEEK_ON_WEEK, *SHORT_RANGE, *CARBON_HISTORY]
 
 
 def build_features(snapshot: Sources, issue_time: pd.Timestamp, targets: pd.DatetimeIndex) -> pd.DataFrame:
@@ -150,6 +155,10 @@ def demand_features(indo: pd.DataFrame, issue_time: pd.Timestamp, targets: pd.Da
     paired = ~np.isnan(week_before)
     frame["demand_change_24h_pct"] = (
         (recent.to_numpy()[paired].mean() / week_before[paired].mean() - 1) * 100 if paired.any() else np.nan
+    )
+    latest_week_before = demand.get(demand.index[-1] - pd.Timedelta(days=7)) if len(demand) else None
+    frame["demand_latest_vs_last_week_pct"] = (
+        (demand.iloc[-1] / latest_week_before - 1) * 100 if latest_week_before else np.nan
     )
     return frame
 

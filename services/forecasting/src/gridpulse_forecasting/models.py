@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import ClassVar, Literal, Protocol
+from typing import Any, ClassVar, Literal, Protocol
 
 import lightgbm as lgb
 import numpy as np
@@ -43,7 +43,11 @@ class SeasonalNaive:
         return {"lag_days": 7}
 
 
-Target = Literal["level", "ratio_to_last_week"]
+Target = Literal["level", "ratio_to_last_week", "residual_to_neso"]
+
+# NESO's day-ahead forecast for the target half-hour, as published by the issue time: an input only for the
+# separately labelled "NESO + correction" model (step 5.4), never for the models compared against NESO.
+NESO_FEATURE = "neso_day_ahead_mw"
 
 # The first configuration, set before any backtest. Variants are compared on a validation window that ends before
 # the test months, never on the test months themselves (ADR-0011).
@@ -69,6 +73,7 @@ class ModelConfig:
     features: tuple[str, ...] = tuple(BASE_FEATURES)
     # "level": demand in MW. "ratio_to_last_week": demand divided by demand at the same time a week earlier, which
     # trees handle better when the level drifts (trees can't extrapolate beyond the targets they were trained on).
+    # "residual_to_neso": actual minus NESO's forecast, so the model learns NESO's errors (needs NESO_FEATURE).
     target: Target = "level"
     params: Mapping[str, str | int | float | bool] = field(default_factory=lambda: dict(BASE_PARAMS))
     num_boost_round: int = 1_000
@@ -100,6 +105,8 @@ class LightGBMQuantiles:
         y = target.to_numpy(dtype="float64")
         if self.config.target == "ratio_to_last_week":
             y = y / last_week(features)
+        elif self.config.target == "residual_to_neso":
+            y = y - features[NESO_FEATURE].to_numpy(dtype="float64")
         usable = np.isfinite(y)
         data = lgb.Dataset(numeric(features[list(self.config.features)])[usable], label=y[usable], free_raw_data=False)
         self._boosters = {
@@ -117,6 +124,8 @@ class LightGBMQuantiles:
         if self.config.target == "ratio_to_last_week":
             # Multiplying by a positive number keeps quantiles in order, so the result is still P10/P50/P90 in MW.
             raw = raw * last_week(features)[:, None]
+        elif self.config.target == "residual_to_neso":
+            raw = raw + features[NESO_FEATURE].to_numpy(dtype="float64")[:, None]
         # Separately trained quantile models can cross (P10 above P50) on odd inputs. Sorting each row is the
         # standard fix ("rearrangement", Chernozhukov et al. 2010): it can only move estimates closer to the truth.
         ordered = np.sort(raw, axis=1)
@@ -130,6 +139,78 @@ class LightGBMQuantiles:
         booster = self._boosters["p50"]
         gain = pd.Series(booster.feature_importance(importance_type="gain"), index=booster.feature_name())
         return (gain / gain.sum()).sort_values(ascending=False)
+
+
+class LightGBMMedian(LightGBMQuantiles):
+    """The P50 model alone: a third of the training time, for studies that compare point forecasts (step 5)."""
+
+    name = "lightgbm-median"
+    QUANTILES: ClassVar[dict[str, float]] = {"p50": 0.5}
+
+
+class NeuralNetwork:
+    """A feed-forward neural network (multi-layer perceptron) on the same features as LightGBM (step 5.5).
+
+    The like-for-like question: on these inputs, does a neural network beat gradient-boosted trees? Unlike trees it
+    needs its inputs prepared: missing values are filled with the training median, with an indicator column so the
+    network can still tell they were missing, and inputs and target are scaled to mean 0 and sd 1. Early stopping
+    holds out the last 10% of training rows, the most recent, so it stops when the model stops improving on newer data.
+    """
+
+    name = "neural-network"
+
+    def __init__(self, config: ModelConfig | None = None, hidden: tuple[int, ...] = (128, 64)) -> None:
+        self.config = config or ModelConfig()
+        self.hidden = hidden
+        self._model: Any = None
+        self._fill: pd.Series | None = None
+        self._with_missing: list[str] = []
+        self._x_scale: tuple[np.ndarray, np.ndarray] | None = None
+        self._y_scale: tuple[float, float] = (0.0, 1.0)
+
+    def _values(self, features: pd.DataFrame) -> np.ndarray:
+        assert self._fill is not None
+        x = numeric(features[list(self.config.features)])
+        indicators = x[self._with_missing].isna().astype("float64").to_numpy()
+        return np.column_stack([x.fillna(self._fill).to_numpy(), indicators])
+
+    def fit(self, features: pd.DataFrame, target: pd.Series) -> None:
+        from sklearn.neural_network import MLPRegressor  # an experiments dependency: only the studies use it
+
+        y = target.to_numpy(dtype="float64")
+        usable = np.isfinite(y)
+        rows, y = features[usable], y[usable]
+        x = numeric(rows[list(self.config.features)])
+        self._fill = x.median().fillna(0.0)
+        self._with_missing = [c for c in x.columns if x[c].isna().any()]
+        values = self._values(rows)
+        sd = values.std(axis=0)
+        self._x_scale = (values.mean(axis=0), np.where(sd > 0, sd, 1.0))
+        self._y_scale = (float(y.mean()), float(y.std()) or 1.0)
+        self._model = MLPRegressor(
+            hidden_layer_sizes=self.hidden,
+            early_stopping=True,
+            validation_fraction=0.1,
+            n_iter_no_change=10,
+            max_iter=200,
+            random_state=42,
+            shuffle=False,  # keep time order, so the early-stopping rows are the most recent
+        )
+        self._model.fit(self._scaled(values), (y - self._y_scale[0]) / self._y_scale[1])
+
+    def _scaled(self, values: np.ndarray) -> np.ndarray:
+        assert self._x_scale is not None
+        mean, sd = self._x_scale
+        return np.asarray((values - mean) / sd)
+
+    def predict(self, features: pd.DataFrame) -> pd.DataFrame:
+        if self._model is None:
+            raise RuntimeError("fit the model before predicting")
+        scaled = np.asarray(self._model.predict(self._scaled(self._values(features))))
+        return pd.DataFrame({"p50": scaled * self._y_scale[1] + self._y_scale[0]}, index=features.index)
+
+    def params(self) -> dict[str, str | int | float]:
+        return {"hidden_layers": "x".join(map(str, self.hidden)), "n_features": len(self.config.features)}
 
 
 class ConformalisedLightGBM:
